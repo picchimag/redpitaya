@@ -1,0 +1,39 @@
+{
+   "ActiveEmotionalView":"Default View",
+   "Default View_ScaleFactor":"1.15457",
+   "Default View_TopLeft":"-136,-107",
+   "ExpandedHierarchyInLayout":"",
+   "guistr":"# # String gsaved with Nlview 7.7.1 2023-07-26 3bc4126617 VDI=43 GEI=38 GUI=JA:21.0
+#  -string -flagsOSRD
+preplace port port-id_s_axis_tvalid -pg 1 -lvl 0 -x -10 -y 90 -defaultsOSRD
+preplace port port-id_dac_clk_o -pg 1 -lvl 3 -x 590 -y 70 -defaultsOSRD
+preplace port port-id_dac_rst_o -pg 1 -lvl 3 -x 590 -y 100 -defaultsOSRD
+preplace port port-id_dac_wrt_o -pg 1 -lvl 3 -x 590 -y 160 -defaultsOSRD
+preplace port port-id_dac_sel_o -pg 1 -lvl 3 -x 590 -y 130 -defaultsOSRD
+preplace port port-id_locked -pg 1 -lvl 0 -x -10 -y 210 -defaultsOSRD
+preplace port port-id_wrt_clk -pg 1 -lvl 0 -x -10 -y 180 -defaultsOSRD
+preplace port port-id_aclk -pg 1 -lvl 0 -x -10 -y 120 -defaultsOSRD
+preplace port port-id_ddr_clk -pg 1 -lvl 0 -x -10 -y 150 -defaultsOSRD
+preplace portBus dac_dat_o -pg 1 -lvl 3 -x 590 -y 190 -defaultsOSRD
+preplace portBus In1 -pg 1 -lvl 0 -x -10 -y 60 -defaultsOSRD
+preplace portBus In0 -pg 1 -lvl 0 -x -10 -y 30 -defaultsOSRD
+preplace inst dac_0 -pg 1 -lvl 2 -x 400 -y 150 -defaultsOSRD
+preplace inst xlconcat_0 -pg 1 -lvl 1 -x 130 -y 60 -defaultsOSRD
+preplace netloc In0_1 1 0 1 20J 30n
+preplace netloc In1_1 1 0 1 20J 60n
+preplace netloc aclk_1 1 0 2 10J 140 240J
+preplace netloc dac_0_dac_clk 1 2 1 540J 70n
+preplace netloc dac_0_dac_dat 1 2 1 NJ 190
+preplace netloc dac_0_dac_rst 1 2 1 550J 100n
+preplace netloc dac_0_dac_sel 1 2 1 560J 130n
+preplace netloc dac_0_dac_wrt 1 2 1 540J 160n
+preplace netloc ddr_clk_1 1 0 2 NJ 150 230J
+preplace netloc locked_1 1 0 2 NJ 210 NJ
+preplace netloc s_axis_tvalid_1 1 0 2 20J 130 NJ
+preplace netloc wrt_clk_1 1 0 2 NJ 180 230J
+preplace netloc xlconcat_0_dout 1 1 1 240 60n
+levelinfo -pg 1 -10 130 400 590
+pagesize -pg 1 -db -bbox -sgen -160 -10 750 260
+"
+}
+0

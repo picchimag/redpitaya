@@ -1,0 +1,20 @@
+verilog xil_defaultlib --include "C:/Xilinx/Vivado/2024.1/data/xilinx_vip/include" --include "../../../../template1.gen/sources_1/bd/system/ipshared/3242" --include "../../../../template1.gen/sources_1/bd/system/ipshared/ec67/hdl" --include "../../../../template1.gen/sources_1/bd/system/ipshared/b28c/hdl" \
+"../../../bd/system/ip/system_pll_0_0/system_pll_0_0_clk_wiz.v" \
+"../../../bd/system/ip/system_pll_0_0/system_pll_0_0.v" \
+"../../../bd/system/ip/system_ps_0_0/sim/system_ps_0_0.v" \
+"../../../bd/system/ip/system_const_0_0/sim/system_const_0_0.v" \
+"../../../bd/system/ipshared/5641/8e04/inout_buffer.v" \
+"../../../bd/system/ipshared/5641/8e04/input_buffer.v" \
+"../../../bd/system/ipshared/5641/8e04/output_buffer.v" \
+"../../../bd/system/ipshared/5641/56ac/axi_hub.v" \
+"../../../bd/system/ip/system_hub_0_0/sim/system_hub_0_0.v" \
+"../../../bd/system/ipshared/6dd9/56ac/axis_red_pitaya_adc.v" \
+"../../../bd/system/ip/system_adc_0_0/sim/system_adc_0_0.v" \
+"../../../bd/system/ipshared/67aa/56ac/axis_red_pitaya_dac.v" \
+"../../../bd/system/ip/system_dac_0_0/sim/system_dac_0_0.v" \
+"../../../bd/system/sim/system.v" \
+
+verilog xil_defaultlib "glbl.v"
+
+# Do not sort compile order
+nosort

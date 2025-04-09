@@ -1,3 +1,5 @@
+//UNUSED
+
 module buffer #(parameter WIDTH = 32) (
     input wire clk,                  // Clock signal
     input wire rst,                  // Reset signal (active high)

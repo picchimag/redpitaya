@@ -4,7 +4,7 @@
 
 set TIME_start [clock seconds] 
 namespace eval ::optrace {
-  variable script "C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.runs/synth_1/system_wrapper.tcl"
+  variable script "C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.runs/synth_1/system_wrapper.tcl"
   variable category "vivado_synth"
 }
 
@@ -65,44 +65,48 @@ set_param project.singleFileAddWarning.threshold 0
 set_param project.compositeFile.enableAutoGeneration 0
 set_param synth.vivado.isSynthRun true
 set_msg_config -source 4 -id {IP_Flow 19-2162} -severity warning -new_severity info
-set_property webtalk.parent_dir C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.cache/wt [current_project]
-set_property parent.project_path C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.xpr [current_project]
+set_property webtalk.parent_dir C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.cache/wt [current_project]
+set_property parent.project_path C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.xpr [current_project]
 set_property XPM_LIBRARIES {XPM_CDC XPM_MEMORY} [current_project]
 set_property default_lib xil_defaultlib [current_project]
 set_property target_language Verilog [current_project]
 set_property ip_repo_paths c:/Users/magrini/Documents/programming/redpitaya/template/cores [current_project]
 update_ip_catalog
-set_property ip_output_repo c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.cache/ip [current_project]
+set_property ip_output_repo c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.cache/ip [current_project]
 set_property ip_cache_permissions {read write} [current_project]
 set_property verilog_define TOOL_VIVADO [current_fileset]
 OPTRACE "Creating in-memory project" END { }
 OPTRACE "Adding files" START { }
-read_mem C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/sources_1/imports/cfg/dds.mem
+read_mem C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/sources_1/imports/cfg/dds.mem
 read_verilog -library xil_defaultlib {
-  C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/sources_1/imports/verilog/iir_filter_2nd_order.v
-  C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/hdl/system_wrapper.v
+  C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/sources_1/imports/verilog/iir_filter_2nd_order.v
+  C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/hdl/system_wrapper.v
 }
-add_files C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/sources_1/bd/system/system.bd
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_pll_0_0/system_pll_0_0_board.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_pll_0_0/system_pll_0_0.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_pll_0_0/system_pll_0_0_ooc.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_ps_0_0/system_ps_0_0.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_rst_0_0/system_rst_0_0_board.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_rst_0_0/system_rst_0_0.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_3/system_auto_pc_3_ooc.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_0/system_auto_pc_0_ooc.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_1/system_auto_pc_1_ooc.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_2/system_auto_pc_2_ooc.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_0/system_axi_gpio_0_0_board.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_0/system_axi_gpio_0_0_ooc.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_0/system_axi_gpio_0_0.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_1/system_axi_gpio_0_1_board.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_1/system_axi_gpio_0_1_ooc.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_1/system_axi_gpio_0_1.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_2/system_axi_gpio_0_2_board.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_2/system_axi_gpio_0_2_ooc.xdc]
-set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_2/system_axi_gpio_0_2.xdc]
-set_property used_in_implementation false [get_files -all C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.gen/sources_1/bd/system/system_ooc.xdc]
+add_files C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/sources_1/bd/system/system.bd
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_pll_0_0/system_pll_0_0_board.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_pll_0_0/system_pll_0_0.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_pll_0_0/system_pll_0_0_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_ps_0_0/system_ps_0_0.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_rst_0_0/system_rst_0_0_board.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_rst_0_0/system_rst_0_0.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_0/system_axi_gpio_0_0_board.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_0/system_axi_gpio_0_0_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_0/system_axi_gpio_0_0.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_1/system_axi_gpio_0_1_board.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_1/system_axi_gpio_0_1_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_1/system_axi_gpio_0_1.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_2/system_axi_gpio_0_2_board.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_2/system_axi_gpio_0_2_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_2/system_axi_gpio_0_2.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_3/system_axi_gpio_0_3_board.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_3/system_axi_gpio_0_3_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_axi_gpio_0_3/system_axi_gpio_0_3.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_4/system_auto_pc_4_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_0/system_auto_pc_0_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_1/system_auto_pc_1_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_2/system_auto_pc_2_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/ip/system_auto_pc_3/system_auto_pc_3_ooc.xdc]
+set_property used_in_implementation false [get_files -all c:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.gen/sources_1/bd/system/system_ooc.xdc]
 
 OPTRACE "Adding files" END { }
 # Mark all dcp files as not used in implementation to prevent them from being
@@ -113,11 +117,11 @@ OPTRACE "Adding files" END { }
 foreach dcp [get_files -quiet -all -filter file_type=="Design\ Checkpoint"] {
   set_property used_in_implementation false $dcp
 }
-read_xdc C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/constrs_1/imports/cfg/clocks.xdc
-set_property used_in_implementation false [get_files C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/constrs_1/imports/cfg/clocks.xdc]
+read_xdc C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/constrs_1/imports/cfg/clocks.xdc
+set_property used_in_implementation false [get_files C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/constrs_1/imports/cfg/clocks.xdc]
 
-read_xdc C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/constrs_1/imports/cfg/ports.xdc
-set_property used_in_implementation false [get_files C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/constrs_1/imports/cfg/ports.xdc]
+read_xdc C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/constrs_1/imports/cfg/ports.xdc
+set_property used_in_implementation false [get_files C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/constrs_1/imports/cfg/ports.xdc]
 
 read_xdc dont_touch.xdc
 set_property used_in_implementation false [get_files dont_touch.xdc]
@@ -125,7 +129,7 @@ set_param ips.enableIPCacheLiteLoad 1
 close [open __synthesis_is_running__ w]
 
 OPTRACE "synth_design" START { }
-synth_design -top system_wrapper -part xc7z010clg400-1 -directive PerformanceOptimized -fsm_extraction one_hot -keep_equivalent_registers -resource_sharing off -no_lc -shreg_min_size 5
+synth_design -top system_wrapper -part xc7z010clg400-1 -directive PerformanceOptimized -fsm_extraction one_hot -keep_equivalent_registers -resource_sharing on -no_lc -shreg_min_size 5
 OPTRACE "synth_design" END { }
 if { [get_msg_config -count -severity {CRITICAL WARNING}] > 0 } {
  send_msg_id runtcl-6 info "Synthesis results are not added to the cache due to CRITICAL_WARNING"

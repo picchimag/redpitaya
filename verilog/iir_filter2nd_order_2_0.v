@@ -1,4 +1,15 @@
-//attempt with direct form 2, transposed.
+/**
+* Now IIR filter in the coupled form. Takes as input registers apha, beta, c, gainP, gainQ
+* alpha and beta define the filter, c is the normalization factor (for unity gain at resonance)
+* and  gainP, gainQ are the gains for the in-phase and quadrature outputs. 
+* The filter transfer function is given by:
+
+*                                beta*z^-1
+*      H(z) =   c * ------------------------------------------
+*                   (1 - 2*alpha*z^-1 + (alpha^2+beta^2)*z^-2)
+*
+*/
+
 
 
 `timescale 1 ns / 1 ps
@@ -8,85 +19,130 @@ module iir_filter_2nd_order #(
     parameter OUT_DATA_WIDTH = 16,
     parameter IN_COEFF_WIDTH = 32,   // Coefficient width
     parameter DATA_WIDTH = 16,  // 
-    parameter COEFF_WIDTH = 16,   // Coefficient width
-    parameter LOG_A0 = COEFF_WIDTH - 2, // A0 is 2^30
-    parameter LOG_DIV = 2 // division of clock by 2**LOG_DIV
+    parameter COEFF_WIDTH = 20,   // Coefficient width
+    parameter LOG_DIV = 10, // division of clock by 2**LOG_DIV
+    parameter LOG_UNITY_GAIN = 10 // logarithm of unity gain
+
 )(
     input wire clk,                   // System clock
-    input wire clk2,
-    input wire rst,                   // Reset signal
+    input wire rst_ext,                   // Reset signal
     input wire signed [IN_DATA_WIDTH-1:0] x_in,          // signed current input sample (16-bit)
-    input wire signed [IN_COEFF_WIDTH-1:0] b0, // Pre-scaled Coefficients from GPIO (32-bit)
-    input wire signed [IN_COEFF_WIDTH-1:0] b1,
-    input wire signed [IN_COEFF_WIDTH-1:0] b2,
-    input wire signed [IN_COEFF_WIDTH-1:0] a1,
-    input wire signed [IN_COEFF_WIDTH-1:0] a2,
-    input wire signed [IN_COEFF_WIDTH-1:0] gain, // Controllable output gain
+    input wire signed [IN_COEFF_WIDTH-1:0] alpha, // Pre-scaled Coefficients from GPIO (32-bit)
+    input wire signed [IN_COEFF_WIDTH-1:0] beta,
+    input wire signed [IN_COEFF_WIDTH-1:0] gainP,
+    input wire signed [IN_COEFF_WIDTH-1:0] gainQ,
+    input wire signed [31:0] gpio_in, //reset in upper bit.
     output reg signed [OUT_DATA_WIDTH-1:0] y_out // output (16-bit)
+
 );
 
+
+    localparam LOG_A0 = COEFF_WIDTH - 2; // one bit for the sign, and one bit for a1,a2 to rach 2. 
+    localparam ADC_DATA_WIDTH = 14; // The actual max value coming from the adc
+    localparam DATA_SHIFT = DATA_WIDTH - ( ADC_DATA_WIDTH + LOG_DIV ) ;// DATA_WIDTH-(ADC_DATA_WIDTH+LOG_DIV)25-(14+2)=9 / 32-(14+2) = 16 // 32-(14+10) = 16  
+    localparam DATA_SHIFT_OUT = DATA_WIDTH - ADC_DATA_WIDTH;
+
     // Internal registers
-    reg [LOG_DIV-1:0] clock_counter;
+    reg rst;
+    reg [LOG_DIV-1:0] counter;
 
-    reg signed [DATA_WIDTH - 1:0] x1, x2, y1, y2, x_sum;
-    reg signed [COEFF_WIDTH-1:0] b0_reg, b1_reg, b2_reg, a1_reg, a2_reg, gain_reg;
+    reg signed [DATA_WIDTH - 1:0] x1, x2, y1, y2, x_sum, u_norm, v_norm, u_out, v_out;
+    reg signed [COEFF_WIDTH-1:0] alpha_reg, beta_reg, gainP_reg, gainQ_reg;
 
-    wire signed [DATA_WIDTH + COEFF_WIDTH -1:0] b0_x, b1_x, b2_x, a1_y, a2_y, acc, y_gain;
+    wire signed [DATA_WIDTH + COEFF_WIDTH -1:0] u, v, u_new, v_new, alpha_u, beta_v, alpha_v, beta_u;
     wire signed [DATA_WIDTH-1:0] x, y;
-    
+
+    //gpio controls
+    always @(posedge clk) begin
+        rst <= gpio_in[31];
+    end
    
+    // Clock
+    always @(posedge clk) begin
+        if (rst) begin
+            counter <= 0;
+        end else begin
+            counter <= counter + 1;
+        end
+    end
+    wire counter_clk = (counter == 0);
+    
+    // Integrator
+    always @(posedge clk) begin
+        if (rst) begin
+            x0 <=0;
+            x_sum <= 0;
+        end else if (counter_clk && DATA_SHIFT >= 0) begin
+            x0 <= (x_sum + x_in) <<< DATA_SHIFT; //log_div = 2, -4->-2  >>>(LOG_DIV-4)
+            x_sum <= 0;
+        end else if (counter_clk && DATA_SHIFT < 0) begin
+            x0 <= (x_sum + x_in) >>> - DATA_SHIFT;
+            x_sum <= 0;
+        end else begin
+            x_sum <= x_sum + x_in;       
+        end
+    end
+
     
     // Pipeline for coefficient registers
     always @(posedge clk) begin
         if (rst) begin
-            b0_reg <= 0;
-            b1_reg <= 0;
-            b2_reg <= 0;
-            a1_reg <= 0;
-            a2_reg <= 0;
-            gain_reg <= 0;
+            alpha_reg <= 0;
+            beta_reg <= 0;
+            gainP_reg <= 0;
+            gainQ_reg <= 0;
+            
         end else begin
-            b0_reg <= b0;
-            b1_reg <= b1;
-            b2_reg <= b2;
-            a1_reg <= a1;
-            a2_reg <= a2;
-            gain_reg <= gain;
+            alpha_reg <= alpha;
+            beta_reg <= beta;
+            gainP_reg <= gainP;
+            gainQ_reg <= gainQ;
+            
         end
     end
 
     // Pipeline filter states
     always @(posedge clk)
       if (rst) begin
-        w1 <= 0;
-        w2 <= 0;
-      end else begin
-        w1 <= w1_new;
-        w2 <= w2_new;
+        u <= 0;
+        v <= 0;    
+      end else if (counter_clk) begin   //IMPORTANT!
+        u <= u_new;
+        v <= v_new;
       end
         
             
     // Combinational multiplications
-    assign b0_x = x_in * b0_reg;
-    assign b1_x = x_in * b1_reg;
-    assign b2_x = x_in * b2_reg;
-    assign a1_y = y * a1_reg;
-    assign a2_y = y * a2_reg;
-
-    assign w0_new = b1_x1 - a1_x1 + w1;
-    assign w1_new = b2_x2 - a2_x2;
-
+    assign alpha_u = alpha * u >>> LOG_A0;  //[20*30] ---> 30
+    assign beta_v = beta * v >>> LOG_A0;
+    assign alpha v = alpha * v >>> LOG_A0;
+    assign beta_u = beta * u >>> LOG_A0;
     
+
     //Filter equation 
-    assign acc = b0_x + b1_x1 + b2_x2 - a1_y1 - a2_y2;
-    assign y = acc >>> LOG_A0;
+    assign u_new = x_in + alpha_u  - beta_v;
+    assign v_new = beta_u + alpha_v;
     
+
     
-    always @(posedge clk or posedge rst) begin
+    // output pipeline
+    always @(posedge clk) begin
         if (rst) begin
+            u_norm <=0;
+            v_norm <= 0;
+            u_out <=0;
+            v_out <= 0;
             y_out <= 0;
+
         end else begin
-            y_out <= y;
+            //Normalization
+             u_norm <= c * u_new  >>> LOG_A0;  //[20x30] ---> 16
+             v_norm <= c * v_new >>> LOG_A0;
+            //Gain 
+             u_out <= gainP * u_norm >>> LOG_UNITY_GAIN; // 16*10-10= 16
+             v_out <= gainQ * v_norm >>> LOG_UNITY_GAIN;
+            //Output
+             y_out <= u_out + v_out >>> DATA_SHIFT_OUT;
         end
     end
     

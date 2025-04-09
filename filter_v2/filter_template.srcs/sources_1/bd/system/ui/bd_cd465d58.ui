@@ -1,0 +1,35 @@
+{
+   "ActiveEmotionalView":"Default View",
+   "Default View_ScaleFactor":"1.0",
+   "Default View_TopLeft":"106,63",
+   "ExpandedHierarchyInLayout":"",
+   "guistr":"# # String gsaved with Nlview 7.7.1 2023-07-26 3bc4126617 VDI=43 GEI=38 GUI=JA:21.0
+#  -string -flagsOSRD
+preplace port DDR -pg 1 -lvl 4 -x 800 -y 60 -defaultsOSRD
+preplace port FIXED_IO -pg 1 -lvl 4 -x 800 -y 90 -defaultsOSRD
+preplace port M00_AXI -pg 1 -lvl 4 -x 800 -y 250 -defaultsOSRD
+preplace port M01_AXI -pg 1 -lvl 4 -x 800 -y 270 -defaultsOSRD
+preplace port M02_AXI -pg 1 -lvl 4 -x 800 -y 290 -defaultsOSRD
+preplace port port-id_M_AXI_GP0_ACLK -pg 1 -lvl 0 -x 0 -y 120 -defaultsOSRD
+preplace port port-id_dcm_locked -pg 1 -lvl 0 -x 0 -y 440 -defaultsOSRD
+preplace portBus peripheral_aresetn -pg 1 -lvl 4 -x 800 -y 110 -defaultsOSRD
+preplace inst ps_0 -pg 1 -lvl 1 -x 220 -y 120 -defaultsOSRD
+preplace inst rst_0 -pg 1 -lvl 1 -x 220 -y 520 -defaultsOSRD
+preplace inst axi_interconnect_0 -pg 1 -lvl 2 -x 580 -y 320 -defaultsOSRD
+preplace inst const_0 -pg 1 -lvl 1 -x 220 -y 380 -defaultsOSRD
+preplace netloc M_AXI_GP0_ACLK_1 1 0 2 30 250 440
+preplace netloc dcm_locked_1 1 0 1 20J 440n
+preplace netloc rst_0_peripheral_aresetn 1 1 3 420 40 NJ 40 770J
+preplace netloc rst_0_interconnect_aresetn 1 1 1 430 160n
+preplace netloc const_0_dout 1 0 2 40 320 400J
+preplace netloc Conn1 1 1 3 400J 50 NJ 50 780J
+preplace netloc Conn2 1 1 3 410J 60 NJ 60 760J
+preplace netloc ps_0_M_AXI_GP0 1 1 1 430 120n
+preplace netloc axi_interconnect_0_M00_AXI 1 2 2 N 250 NJ
+preplace netloc axi_interconnect_0_M01_AXI 1 2 2 N 270 NJ
+preplace netloc axi_interconnect_0_M02_AXI 1 2 2 N 290 NJ
+levelinfo -pg 1 0 220 580 740 800
+pagesize -pg 1 -db -bbox -sgen -170 -10 1020 610
+"
+}
+

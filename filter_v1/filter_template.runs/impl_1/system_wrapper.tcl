@@ -1,5 +1,5 @@
 namespace eval ::optrace {
-  variable script "C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.runs/impl_1/system_wrapper.tcl"
+  variable script "C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.runs/impl_1/system_wrapper.tcl"
   variable category "vivado_impl"
 }
 
@@ -113,23 +113,23 @@ OPTRACE "create in-memory project" START { }
   set_param project.singleFileAddWarning.threshold 0
 OPTRACE "create in-memory project" END { }
 OPTRACE "set parameters" START { }
-  set_property webtalk.parent_dir C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.cache/wt [current_project]
-  set_property parent.project_path C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.xpr [current_project]
+  set_property webtalk.parent_dir C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.cache/wt [current_project]
+  set_property parent.project_path C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.xpr [current_project]
   set_property ip_repo_paths C:/Users/magrini/Documents/programming/redpitaya/template/cores [current_project]
   update_ip_catalog
-  set_property ip_output_repo C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.cache/ip [current_project]
+  set_property ip_output_repo C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.cache/ip [current_project]
   set_property ip_cache_permissions {read write} [current_project]
   set_property XPM_LIBRARIES {XPM_CDC XPM_MEMORY} [current_project]
 OPTRACE "set parameters" END { }
 OPTRACE "add files" START { }
-  add_files -quiet C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.runs/synth_1/system_wrapper.dcp
+  add_files -quiet C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.runs/synth_1/system_wrapper.dcp
   set_msg_config -source 4 -id {BD 41-1661} -limit 0
   set_param project.isImplRun true
-  add_files C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/sources_1/bd/system/system.bd
+  add_files C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/sources_1/bd/system/system.bd
   set_param project.isImplRun false
 OPTRACE "read constraints: implementation" START { }
-  read_xdc C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/constrs_1/imports/cfg/clocks.xdc
-  read_xdc C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.srcs/constrs_1/imports/cfg/ports.xdc
+  read_xdc C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/constrs_1/imports/cfg/clocks.xdc
+  read_xdc C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.srcs/constrs_1/imports/cfg/ports.xdc
 OPTRACE "read constraints: implementation" END { }
 OPTRACE "read constraints: implementation_pre" START { }
 OPTRACE "read constraints: implementation_pre" END { }

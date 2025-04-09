@@ -1,7 +1,7 @@
 from load_coeff import RedPitaya
 import numpy as np
 from scipy.signal import iirfilter, freqz, bilinear, butter
-
+import time
 
 
 ### FIRST ORDER BAND PASS FILTER ###
@@ -62,11 +62,12 @@ zeta = 0.1  # Bandwidth in Hz
 #b, a = butter(1, 1000e3/nyq, btype='low', analog=False)
 
 iir_dict = {}
-LOGDIV = 12
-scale_factor = 2**23
+LOGDIV = 10
+LOG_A0 =30
+#LOG_A0 = 18
+Q = 100
 
-Q = 30
-f0= 200
+f0= 10
 
 sf = 1/(2**LOGDIV*8e-9)  # Sampling frequency in Hz
 nyq = sf / 2
@@ -81,29 +82,57 @@ b, a = bilinear(num, den, sf)
 omega_0 = 2 * np.pi * f0
 num = np.array([0,omega_0,0])/Q*np.sqrt(2)  # numerator: [omega_0^2]
 den = np.array([1, np.sqrt(2) * omega_0 /Q, omega_0**2])  # denominator: [1, 2 * zeta * omega_0, omega_0^2]
-#b, a = bilinear(num, den, sf)
+b, a = bilinear(num, den, sf)
 
 ## JUST BASIC CHECK ###
-#b=np.array([1,0,0])
-#a=np.array([0,0,0])
+b=np.array([1,0,0])
+a=np.array([0,0,0])
+
+
+# Compute alpha and beta c1 and c2
+alpha = -a[1] / 2
+beta = np.sqrt(a[2] - (a[1]**2) / 4)
+c = np.sqrt(1-2*a[2]+a[2]**2)
+
+#LOG_A0 = 18
 
 
 
-delta_b = 2**7
-b = b*delta_b
+alpha = int(round(alpha * (1 << LOG_A0)))
+beta = int(round(beta * (1 << LOG_A0)))
+c = int(round(c * (1 << LOG_A0)))
+
+b = np.round(b* (1 << LOG_A0)).astype('int32')
+a = np.round(a* (1 << LOG_A0)).astype('int32')
 
 
-print(a,b, '\n')
+iir_dict = {
+    "iir_a1": a[1],
+    "iir_a2": a[2],
+    "iir_b0": b[0],
+    "iir_b1": b[1],
+    "iir_b2": b[2],
+    "gain": 2**9
+}
 
-if max(abs(b)) > 2: print('!!!!!!!!!!!!!!!!!!!!!!!!!ATTENTION: b is too big !!!!!!!!!!!!!!!!!!!!!!!!!\n')
+iir_dict_c = {
+    "alpha": alpha,
+    "beta": beta,
+    "c": c*1000,
+    "gainP": 2**20,
+    "gainQ":0 # 2**10,
+}
+
+iir_dict_0 = {
+    "iir_a1": 0,
+    "iir_a2": 0,
+    "iir_b0": 0,
+    "iir_b1": 0,
+    "iir_b2": 0,
+    "gain": 0
+}
 
 
-b = np.round(b *scale_factor).astype('int32')
-a = np.round(a* scale_factor).astype('int32')
-
-_, iir_dict['iir_a1'],iir_dict['iir_a2'] = np.pad(a, (0, 3 - len(a)), 'constant')
-iir_dict['iir_b0'], iir_dict['iir_b1'],iir_dict['iir_b2'] = np.pad(b, (0, 3 - len(b)), 'constant')
-#ir_dict['gain'] = 2**16
 
 print( a,b, '\n')
 
@@ -113,6 +142,15 @@ rp = RedPitaya("171.64.56.58", "root", "root")
 #rp = RedPitaya("10.0.0.186", "root", "root")
 
 rp.connect()
+rp.enable('IIR1',False)
+#time.sleep(1)
+print(rp.get_params("IIR1"))
 rp.set_params("IIR1", iir_dict)
 print(rp.get_params("IIR1"))
+rp.enable('IIR1',True)
 rp.close()
+
+
+
+
+ #scp /mnt/c/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.runs/impl_1/system_wrapper.bit root@171.64.56.58:/root/filt42.bit

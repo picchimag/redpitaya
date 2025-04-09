@@ -1,8 +1,8 @@
 import paramiko
 import numpy as np
+import time
 
 class RedPitaya:
-
     
     modules = {
 
@@ -13,28 +13,6 @@ class RedPitaya:
                 'fir_c3': {'base_address': 0x41230000, 'offset': 8, 'msb': 15, 'lsb': 0}    #GPIO 3 1
             },
 
-        'MULT': {
-            'c1': {'base_address': 0x41230000, 'offset': 0, 'msb': 31, 'lsb': 0},  #GPIO 3 0
-            'c2': {'base_address': 0x41230000, 'offset': 8, 'msb': 31, 'lsb': 0},  #GPIO 3 0
-        },
-
-        'GPIO1': {
-                    'in1': {'base_address': 0x41200000, 'offset': 0, 'msb': 31, 'lsb': 16},  #GPIO 3 0
-                    'in2': {'base_address': 0x41200000, 'offset': 8, 'msb': 15, 'lsb': 0},  #GPIO 3 0
-                    'out1': {'base_address': 0x41200000, 'offset': 8, 'msb': 31, 'lsb': 16},  #GPIO 3 0
-                    'out2': {'base_address': 0x41200000, 'offset': 8, 'msb': 15, 'lsb': 0},  #GPIO 3 0
-                },
-
-
-
-       # 'IIR1': {
-       #         'iir_a1': {'base_address': 0x41200000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 0 1
-       #         'iir_a2': {'base_address': 0x41200000, 'offset': 8, 'msb': 31, 'lsb': 0},    #GPIO 0 2
-       #         'iir_b0': {'base_address': 0x41210000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 1 1
-       #         'iir_b1': {'base_address': 0x41210000, 'offset': 8, 'msb': 31, 'lsb': 0},    #GPIO 1 2
-       #         'iir_b2': {'base_address': 0x41220000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 2 1
-       #         'gain'  : {'base_address': 0x41220000, 'offset': 8, 'msb': 31, 'lsb': 0}     #GPIO 2 2    
-       #     }
 
         'IIR1': {
                 'iir_b0': {'base_address': 0x41200000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 0 1
@@ -42,9 +20,19 @@ class RedPitaya:
                 'iir_b2': {'base_address': 0x41210000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 1 1
                 'iir_a1': {'base_address': 0x41210000, 'offset': 8, 'msb': 31, 'lsb': 0},    #GPIO 1 2
                 'iir_a2': {'base_address': 0x41220000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 2 1
-                'gain'  : {'base_address': 0x41220000, 'offset': 8, 'msb': 30,'lsb': 0},    #GPIO 2 2
+                'gain'  : {'base_address': 0x41220000, 'offset': 8, 'msb': 17,'lsb': 0},     #GPIO 2 2
                 'reset' : {'base_address': 0x41220000, 'offset': 8, 'msb': 31, 'lsb': 31}
-            }
+            },
+
+
+        'IIR2': {
+            'alpha' : {'base_address': 0x41200000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 0 1
+            'beta'  : {'base_address': 0x41200000, 'offset': 8, 'msb': 31, 'lsb': 0},    #GPIO 0 2
+            'c'     : {'base_address': 0x41210000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 1 1
+            'gainP' : {'base_address': 0x41210000, 'offset': 8, 'msb': 31, 'lsb': 0},    #GPIO 1 2
+            'gainQ' : {'base_address': 0x41220000, 'offset': 0, 'msb': 31, 'lsb': 0},    #GPIO 2 1
+            'reset' : {'base_address': 0x41220000, 'offset': 8, 'msb': 31, 'lsb': 31}
+        }
 
 
 
@@ -89,7 +77,27 @@ class RedPitaya:
             self.ssh.close()
             print(f"Connection to {self.hostname} closed.")
 
+    def enable(self, module_name, enabled=True):
+        if 'reset' not in self.modules[module_name]:
+                    print(f"Module {module_name} does not have reset capability.")
+                    return
+        
+        if enabled:
+            self.set_params(module_name, {'reset': 0})
+        else:
+            self.set_params(module_name, {'reset': 1})
 
+    def reset(self, module_name):
+        """Reset a given module."""
+        if 'reset' not in self.modules[module_name]:
+            print(f"Module {module_name} does not have reset capability.")
+            return
+            
+        # Assert reset by setting reset bit to 1
+        self.set_params(module_name, {'reset': 1})
+        
+        # De-assert reset by setting reset bit back to 0
+        self.set_params(module_name, {'reset': 0})
 
     def set_params(self, module_name, params):
         """Set parameters for a given module."""
@@ -148,153 +156,61 @@ class RedPitaya:
 
 # Example Usage
 if __name__ == "__main__":
+
+
     from scipy.signal import iirfilter, freqz, bilinear, butter
 
-    """
-    sf = 1/(8e-9*4)  # Sampling frequency in Hz
-    f0 = 10000  # Center frequency in Hz
-    zeta = 0.1  # Bandwidth in Hz
-    nyq = sf/2
-    b, a = iirfilter(1, [f0/nyq-f0*zeta/nyq,f0/nyq+f0*zeta/nyq], btype='band', ftype='butter', analog=False)
-    b, a = butter(1, 5000/nyq, btype='low', analog=False)
-    print(a,b)
-    # Convert to fixed-point representation by scaling coefficients
-    scale_factor =2**31  # Scaling factor to avoid underflow/overflow in fixed-point arithmetic
-    
 
-    print(a/a[0],b/a[0])
-
-    b = np.round(b * scale_factor).astype(int)
-    a = np.round(a* scale_factor).astype(int)
-    print(a/2**31, b/2**31)
-    
-    #iir_dict = {'iir_a1': 1, 'iir_a2': 1, 'iir_b0': 1, 'iir_b1': 2**31, 'iir_b2': 1, 'gain': 1}
-    
-    
-    _, iir_dict['iir_a1'] = a
-    iir_dict['iir_b0'], iir_dict['iir_b1'] = b
-    iir_dict['gain'] = 2**16
-    #_, iir_dict['iir_a1'],iir_dict['iir_a2'] = a
-    #iir_dict['iir_b0'], iir_dict['iir_b1'],iir_dict['iir_b2'] = b
-    #print(iir_dict)
-    """
-
-    ### ARBITRARY 2ND ORDER FILTER ###
-    iir_dict = {'iir_a1': -2147263441, 
-                'iir_a2': 1073525957, 
-                'iir_b0': 107933,
-                'iir_b1': 0, 
-                'iir_b2': -107933, 
-                'gain': 2**10
-                }
-
-    ### FIRST ORDER BAND PASS FILTER ###
     iir_dict = {}
-    scale_factor = 2**30
-    sf = 1/(8e-9*4)
-    nyq = sf/2
-    f0 = 5000
-    Q = 10
-    w0 = 2 * np.pi * f0 / sf
-    alpha = np.sin(w0) / (2 * Q)
-    cos_w0 = np.cos(w0)
-    b  = [alpha, 0, -alpha] 
-    a = [1 + alpha, -2 * cos_w0, 1 - alpha]
-    b = np.round(b * scale_factor).astype(int)
-    a = np.round(a* scale_factor).astype(int)
-    _, iir_dict['iir_a1'],iir_dict['iir_a2'] = a
-    iir_dict['iir_b0'], iir_dict['iir_b1'],iir_dict['iir_b2'] = b
-    iir_dict['gain'] = 2**16
-
     
+    #Fixed parameters, depend on the filter design
+    LOGDIV = 10
+    LOG_A0 =30
+    LOG_UNITY_GAIN  = 9
 
-    ### FIRST ORDER HIGH PASS FILTER ###
-    iir_dict = {}  
-    scale_factor = 2**30
-    sf = 1/(8e-9*4)
-    nyq = sf/2
-    b, a = butter(1, 5000/nyq, btype='high', analog=False)
-    b = np.round(b * scale_factor).astype(int)
-    a = np.round(a* scale_factor).astype(int)
-    _, iir_dict['iir_a1'] = a
-    iir_dict['iir_b0'], iir_dict['iir_b1'] = b
-    iir_dict['gain'] = 2**16    
+    sf = 1/(2**LOGDIV*8e-9)  # Sampling frequency in Hz 8ns is the clock of the red pitaya
 
-
-  
-
-    ### FIRST ORDER HIGH PASS FILTER ###
-    iir_dict = {}  
-    scale_factor = 2**30
-    sf = 1/(8e-9*4)
-    nyq = sf/2
-    b, a = butter(1, 5000/nyq, btype='high', analog=False)
-    b = np.round(b * scale_factor).astype(int)
-    a = np.round(a* scale_factor).astype(int)
-    _, iir_dict['iir_a1'] = a
-    iir_dict['iir_b0'], iir_dict['iir_b1'] = b
-    iir_dict['gain'] = 2**16 
-
+    #Variable parameters, controlled by GPIOs
+    Q = 100
+    f0= 10
 
     
 
 
-    ### FIRST ORDER BAND PASS FILTER ###
-    iir_dict = {}
-    scale_factor = 2**29
-    sf = 1/(8e-9*4)
-    nyq = sf/2
-    f0 = 5000
-    Q = 10
-    w0 = 2 * np.pi * f0 / sf
-    alpha = np.sin(w0) / (2 * Q)
-    cos_w0 = np.cos(w0)
-    b  = [alpha, 0, -alpha] 
-    a = [1 + alpha, -2 * cos_w0, 1 - alpha]
+    #Compute filter coefficients
+    omega_0 = 2 * np.pi * f0
+    #num = np.array([omega_0**2])/Q*np.sqrt(2) # harmonic oscillator x
+    num = np.array([0,omega_0,0])/Q*np.sqrt(2) # harmonic oscillator v
+    den = np.array([1, np.sqrt(2) * omega_0 /Q, omega_0**2])  # denominator: [1, 2 * zeta * omega_0, omega_0^2]
+    b, a = bilinear(num, den, sf)
 
-    b_i = np.round(b * scale_factor).astype(int)
-    a_i = np.round(a* scale_factor).astype(int)
-    _, iir_dict['iir_a1'],iir_dict['iir_a2'] = a_i
-    iir_dict['iir_b0'], iir_dict['iir_b1'],iir_dict['iir_b2'] = b_i
-    iir_dict['gain'] = 2**22
-
-    
+    # Rescale coefficients to fit into 32 bits
+    b = np.round(b* (1 << LOG_A0)).astype('int32')
+    a = np.round(a* (1 << LOG_A0)).astype('int32')
 
 
- ### FIRST ORDER LOW PASS FILTER ###
-  #  iir_dict = {}
-  #  scale_factor = 2**29
-  #  sf = 1/(8e-9*4)
-  #  nyq = sf/2
-  #  b, a = butter(1, 5000/nyq, btype='low', analog=False)
-  #  b = np.round(b * scale_factor).astype(int)
-    a = np.round(a* scale_factor).astype(int)
-    _, iir_dict['iir_a1'] = a
-    iir_dict['iir_b0'], iir_dict['iir_b1'] = b
-   #iir_dict['gain'] = 2**22
+    iir_dict = {
+        "iir_a1": a[1],
+        "iir_a2": a[2],
+        "iir_b0": b[0],
+        "iir_b1": b[1],
+        "iir_b2": b[2],
+        "gain": 2**LOG_UNITY_GAIN
+    }
 
+    ### LOAD COEFFICIENTS TO RED PITAYA ###
 
-   ### LOAD COEFFICIENTS TO RED PITAYA ###
+    rp = RedPitaya("171.64.56.58", "root", "root")
+    #rp = RedPitaya("10.0.0.186", "root", "root")
 
-
-
-    ### FIRST ORDER LOW PASS FILTER ###
-    iir_dict = {}
-    scale_factor = 2**30
-    sf = 1/(8e-9*4)
-    nyq = sf/2
-    b, a = butter(1, 5000/nyq, btype='low', analog=False)
-    b = np.round(b * scale_factor).astype(int)
-    a = np.round(a* scale_factor).astype(int)
-
-
-    _, iir_dict['iir_a1'] = a
-    iir_dict['iir_b0'], iir_dict['iir_b1'] = b
-    iir_dict['gain'] = 2**14
-
-    #rp = RedPitaya("171.64.56.58", "root", "root")
-    rp = RedPitaya("10.0.0.186", "root", "root")
     rp.connect()
+    rp.enable('IIR1',False)
+    print(rp.get_params("IIR1"))
     rp.set_params("IIR1", iir_dict)
     print(rp.get_params("IIR1"))
+    rp.enable('IIR1',True)
     rp.close()
+
+
+
+#scp /mnt/c/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.runs/impl_1/system_wrapper.bit root@171.64.56.58:/root/filt42.bit

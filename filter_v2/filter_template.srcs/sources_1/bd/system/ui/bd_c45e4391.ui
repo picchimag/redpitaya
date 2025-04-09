@@ -1,0 +1,30 @@
+{
+   "ActiveEmotionalView":"Default View",
+   "Default View_ScaleFactor":"1.13333",
+   "Default View_TopLeft":"-158,-100",
+   "ExpandedHierarchyInLayout":"",
+   "guistr":"# # String gsaved with Nlview 7.7.1 2023-07-26 3bc4126617 VDI=43 GEI=38 GUI=JA:21.0
+#  -string -flagsOSRD
+preplace port port-id_adc_csn_o -pg 1 -lvl 3 -x 580 -y 230 -defaultsOSRD
+preplace port port-id_aclk -pg 1 -lvl 0 -x 0 -y 160 -defaultsOSRD
+preplace port port-id_m_axis_tvalid -pg 1 -lvl 3 -x 580 -y 200 -defaultsOSRD
+preplace portBus adc_dat_a_i -pg 1 -lvl 0 -x 0 -y 190 -defaultsOSRD
+preplace portBus adc_dat_b_i -pg 1 -lvl 0 -x 0 -y 220 -defaultsOSRD
+preplace portBus Dout0 -pg 1 -lvl 3 -x 580 -y 50 -defaultsOSRD
+preplace portBus Dout1 -pg 1 -lvl 3 -x 580 -y 150 -defaultsOSRD
+preplace inst adc_0 -pg 1 -lvl 1 -x 180 -y 200 -defaultsOSRD
+preplace inst xlslice_0 -pg 1 -lvl 2 -x 450 -y 50 -defaultsOSRD
+preplace inst xlslice_1 -pg 1 -lvl 2 -x 450 -y 150 -defaultsOSRD
+preplace netloc adc_dat_a_i_1 1 0 1 20J 190n
+preplace netloc adc_dat_b_i_1 1 0 1 NJ 220
+preplace netloc adc_0_adc_csn 1 1 2 NJ 230 NJ
+preplace netloc adc_0_m_axis_tdata 1 1 1 350 50n
+preplace netloc aclk_1 1 0 1 20J 160n
+preplace netloc adc_0_m_axis_tvalid 1 1 2 NJ 210 550J
+preplace netloc xlslice_0_Dout 1 2 1 NJ 50
+preplace netloc xlslice_1_Dout 1 2 1 NJ 150
+levelinfo -pg 1 0 180 450 580
+pagesize -pg 1 -db -bbox -sgen -180 -10 730 280
+"
+}
+

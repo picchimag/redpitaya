@@ -25,7 +25,7 @@ else
 fi
 export LD_LIBRARY_PATH
 
-HD_PWD='C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.runs/impl_1'
+HD_PWD='C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.runs/impl_1'
 cd "$HD_PWD"
 
 HD_LOG=runme.log

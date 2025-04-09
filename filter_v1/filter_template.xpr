@@ -4,7 +4,7 @@
 <!-- Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.                   -->
 <!-- Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.   -->
 
-<Project Product="Vivado" Version="7" Minor="67" Path="C:/Users/magrini/Documents/programming/redpitaya/filter_template/filter_template.xpr">
+<Project Product="Vivado" Version="7" Minor="67" Path="C:/Users/magrini/Documents/programming/redpitaya/filter_v1/filter_template.xpr">
   <DefaultLaunch Dir="$PRUNDIR"/>
   <Configuration>
     <Option Name="Id" Val="20aa0f43042645fc9ed440f7cceef960"/>
@@ -90,10 +90,10 @@
   <FileSets Version="1" Minor="32">
     <FileSet Name="sources_1" Type="DesignSrcs" RelSrcDir="$PSRCDIR/sources_1" RelGenDir="$PGENDIR/sources_1">
       <Filter Type="Srcs"/>
-      <File Path="$PSRCDIR/sources_1/imports/verilog/iir_filter_2nd_order.v">
+      <File Path="$PSRCDIR/sources_1/imports/verilog/iir_filter2nd_order_1_1.v">
         <FileInfo>
-          <Attr Name="ImportPath" Val="$PPRDIR/../verilog/iir_filter_2nd_order.v"/>
-          <Attr Name="ImportTime" Val="1734390449"/>
+          <Attr Name="ImportPath" Val="$PPRDIR/../verilog/iir_filter2nd_order_1_1.v"/>
+          <Attr Name="ImportTime" Val="1744201006"/>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>
           <Attr Name="UsedIn" Val="simulation"/>
@@ -209,7 +209,7 @@
           <Option Id="FsmExtraction">1</Option>
           <Option Id="KeepEquivalentRegisters">1</Option>
           <Option Id="NoCombineLuts">1</Option>
-          <Option Id="ResourceSharing">2</Option>
+          <Option Id="ResourceSharing">1</Option>
           <Option Id="ShregMinSize">5</Option>
         </Step>
       </Strategy>

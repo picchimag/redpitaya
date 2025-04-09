@@ -52,55 +52,53 @@
 
 (* X_CORE_INFO = "iir_filter_2nd_order,Vivado 2024.1" *)
 (* CHECK_LICENSE_TYPE = "system_iir_filter_2nd_order_0_0,iir_filter_2nd_order,{}" *)
-(* CORE_GENERATION_INFO = "system_iir_filter_2nd_order_0_0,iir_filter_2nd_order,{x_ipProduct=Vivado 2024.1,x_ipVendor=xilinx.com,x_ipLibrary=module_ref,x_ipName=iir_filter_2nd_order,x_ipVersion=1.0,x_ipCoreRevision=1,x_ipLanguage=VERILOG,x_ipSimLanguage=MIXED,IN_DATA_WIDTH=16,OUT_DATA_WIDTH=16,IN_COEFF_WIDTH=32,DATA_WIDTH=18,COEFF_WIDTH=25,B_SHIFT=7,LOG_DIV=12}" *)
+(* CORE_GENERATION_INFO = "system_iir_filter_2nd_order_0_0,iir_filter_2nd_order,{x_ipProduct=Vivado 2024.1,x_ipVendor=xilinx.com,x_ipLibrary=module_ref,x_ipName=iir_filter_2nd_order,x_ipVersion=1.0,x_ipCoreRevision=1,x_ipLanguage=VERILOG,x_ipSimLanguage=MIXED,IN_DATA_WIDTH=16,OUT_DATA_WIDTH=16,DATA_WIDTH=32,GAIN_DATA_WIDTH=25,COEFF_WIDTH=32,LOG_DIV=10,LOG_UNITY_GAIN=9}" *)
 (* IP_DEFINITION_SOURCE = "module_ref" *)
 (* DowngradeIPIdentifiedWarnings = "yes" *)
 module system_iir_filter_2nd_order_0_0 (
   clk,
-  rst,
+  rst_ext,
   x_in,
   b0,
   b1,
   b2,
   a1,
   a2,
-  gain,
+  gpio_in,
   y_out
 );
 
-(* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME clk, ASSOCIATED_RESET rst, FREQ_HZ 125000000, FREQ_TOLERANCE_HZ 0, PHASE 0.0, CLK_DOMAIN system_pll_0_0_clk_out1, INSERT_VIP 0" *)
+(* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME clk, FREQ_HZ 125000000, FREQ_TOLERANCE_HZ 0, PHASE 0.0, CLK_DOMAIN system_pll_0_0_clk_out1, INSERT_VIP 0" *)
 (* X_INTERFACE_INFO = "xilinx.com:signal:clock:1.0 clk CLK" *)
 input wire clk;
-(* X_INTERFACE_PARAMETER = "XIL_INTERFACENAME rst, POLARITY ACTIVE_LOW, INSERT_VIP 0" *)
-(* X_INTERFACE_INFO = "xilinx.com:signal:reset:1.0 rst RST" *)
-input wire rst;
+input wire rst_ext;
 input wire [15 : 0] x_in;
 input wire [31 : 0] b0;
 input wire [31 : 0] b1;
 input wire [31 : 0] b2;
 input wire [31 : 0] a1;
 input wire [31 : 0] a2;
-input wire [31 : 0] gain;
+input wire [31 : 0] gpio_in;
 output wire [15 : 0] y_out;
 
   iir_filter_2nd_order #(
     .IN_DATA_WIDTH(16),
     .OUT_DATA_WIDTH(16),
-    .IN_COEFF_WIDTH(32),
-    .DATA_WIDTH(18),
-    .COEFF_WIDTH(25),
-    .B_SHIFT(7),
-    .LOG_DIV(12)
+    .DATA_WIDTH(32),
+    .GAIN_DATA_WIDTH(25),
+    .COEFF_WIDTH(32),
+    .LOG_DIV(10),
+    .LOG_UNITY_GAIN(9)
   ) inst (
     .clk(clk),
-    .rst(rst),
+    .rst_ext(rst_ext),
     .x_in(x_in),
     .b0(b0),
     .b1(b1),
     .b2(b2),
     .a1(a1),
     .a2(a2),
-    .gain(gain),
+    .gpio_in(gpio_in),
     .y_out(y_out)
   );
 endmodule

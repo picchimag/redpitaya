@@ -1,35 +1,4 @@
-// ITV WORKS! 
-//following more or less instruction in 
-//https://www.hackster.io/pablotrujillojuan/implementation-of-an-iir-filter-on-fpga-from-scratch-4b8539
-
-/*
-- configuration and 125 MHz clock. 
-This means the filter strts to be unstable  with badpass as low as 200kHz.
-- 16*16 (actually 14) bit (WNS:3.447, 6 DSP), works, becomes unstable around 150kHz
-- 16*16 (actually 16) bit (WNS:3.447, 6 DSP), works, less unstable around 150kHz
-
-To do:
- - test higher bit detph
- - test decimation
- - test differnt algorithms
- - add gain
- - try different mult for a and b
- */
-
-
-// ITV WORKS! 
-//following more or less instruction in 
-//https://www.hackster.io/pablotrujillojuan/implementation-of-an-iir-filter-on-fpga-from-scratch-4b8539
-
-/*
-For the moment it works in 16*16 bit configuration and 125 MHz clock. 
-This means the filter strts to be unstable  with badpass as low as 200kHz. 
-
-To do:
- - test higher bit detph
- - test decimation
- - test differnt algorithms
- */
+//works!!!!
 
 `timescale 1 ns / 1 ps
 
@@ -37,13 +6,13 @@ module iir_filter_2nd_order #(
     parameter IN_DATA_WIDTH = 16,    // Input/output data width
     parameter OUT_DATA_WIDTH = 16,
     parameter IN_COEFF_WIDTH = 32,   // Coefficient width
-    
-    parameter DATA_WIDTH = 32,  // 
-    parameter COEFF_WIDTH = 32,   // Coefficient width
-    parameter LOG_DELTA_B = 7,
-    parameter LOG_DIV = 10 // division of clock by 2**LOG_DIV
+    parameter DATA_WIDTH = 16,  // 
+    parameter COEFF_WIDTH = 16,   // Coefficient width
+    parameter LOG_A0 = COEFF_WIDTH - 2, // A0 is 2^30
+    parameter LOG_DIV = 2 // division of clock by 2**LOG_DIV
 )(
     input wire clk,                   // System clock
+    input wire clk2,
     input wire rst,                   // Reset signal
     input wire signed [IN_DATA_WIDTH-1:0] x_in,          // signed current input sample (16-bit)
     input wire signed [IN_COEFF_WIDTH-1:0] b0, // Pre-scaled Coefficients from GPIO (32-bit)
@@ -55,60 +24,27 @@ module iir_filter_2nd_order #(
     output reg signed [OUT_DATA_WIDTH-1:0] y_out // output (16-bit)
 );
 
-    localparam LOG_A0 = COEFF_WIDTH - 2; // one bit for the sign, and one bit for a1,a2 to rach 2. 
-    localparam ADC_DATA_WIDTH = 14; // The actual max value coming from the adc
-    localparam DATA_SHIFT = DATA_WIDTH - ( ADC_DATA_WIDTH + LOG_DIV ) ;// DATA_WIDTH-(ADC_DATA_WIDTH+LOG_DIV)25-(14+2)=9 / 32-(14+2) = 16 // 32-(14+10) = 16  
-    localparam DATA_SHIFT_OUT = DATA_WIDTH - ADC_DATA_WIDTH;
-
     // Internal registers
-    reg [LOG_DIV-1:0] counter;
-
-    reg signed [DATA_WIDTH - 1:0] x0, x1, x2, y1, y2;
-    reg signed [DATA_WIDTH + LOG_DIV - 1:0] x_sum;
+    reg [LOG_DIV-1:0] clock_counter;
+    reg signed [DATA_WIDTH-1:0] x_sum;
     reg signed [COEFF_WIDTH-1:0] b0_reg, b1_reg, b2_reg, a1_reg, a2_reg, gain_reg;
-
-    wire signed [DATA_WIDTH + COEFF_WIDTH -1:0] b0_x0, b1_x1, b2_x2, a1_y1, a2_y2, acc_ff, acc_fb, acc, y_gain;
-    wire signed [DATA_WIDTH-1:0] x, y;
+    reg signed [COEFF_WIDTH+DATA_WIDTH-1:0] w0, w1, y_gain;
+    
+    reg signed [DATA_WIDTH - 1:0] input_pipe1, input_pipe2, output_pipe1, output_pipe2;
+    wire signed [DATA_WIDTH + COEFF_WIDTH -1:0] input_b0, input_b1, input_b2, output_a1,output_a2, acc;
+ 
+    
+    wire signed [DATA_WIDTH-1:0] f1_n0, x, y;
+    
+    // history pipeline regs
+    reg signed [COEFF_WIDTH+DATA_WIDTH-1:0] f1_n1, f1_n2, f1_n3; 
+    // history pipeline inputs
+    wire signed [COEFF_WIDTH+DATA_WIDTH-1:0] f1_n1_input, f1_n2_input;
     
    
-    // Clock
-    always @(posedge clk) begin
-        if (rst) begin
-            counter <= 0;
-        end else begin
-            counter <= counter + 1;
-        end
-    end
-    wire counter_clk = (counter == 0);
     
-    // Integrator
-    always @(posedge clk) begin
-        if (rst) begin
-            x0 <=0;
-            x_sum <= 0;
-        end else if (counter_clk && DATA_SHIFT >= 0) begin
-            x0 <= (x_sum + x_in) <<< DATA_SHIFT; //log_div = 2, -4->-2  >>>(LOG_DIV-4)
-            x_sum <= 0;
-        end else if (counter_clk && DATA_SHIFT < 0) begin
-            x0 <= (x_sum + x_in) >>> - DATA_SHIFT;
-            x_sum <= 0;
-        end else begin
-            x_sum <= x_sum + x_in;       
-        end
-    end
-    
-    /*// Alternative to Intewgrator: just decimation:
-    always @(posedge clk) begin
-        if (rst) begin
-            x0 <=0;
-        end else if (counter_clk) begin
-            x0 <= x_in <<< DATA_SHIFT;
-        end
-    end
-    */
-    
-    // Pipeline for coefficient registers
-    always @(posedge clk) begin
+     // Pipeline for coefficient registers
+    always @(posedge clk or posedge rst) begin
         if (rst) begin
             b0_reg <= 0;
             b1_reg <= 0;
@@ -126,39 +62,37 @@ module iir_filter_2nd_order #(
         end
     end
 
-    // Pipeline for in and out registers
+    /* pipeline registers */
     always @(posedge clk)
       if (rst) begin
-        x1 <= 0;
-        x2 <= 0;
-        y2 <= 0;
-      end else if (counter_clk) begin
-        x1 <= x0;
-        x2 <= x1;
-        y2 <= y1;
-        y1 <= y;
+        input_pipe1 <= 0;
+        input_pipe2 <= 0;
+        output_pipe1 <= 0;
+        output_pipe2 <= 0;
+      end else begin
+        input_pipe1 <= x_in;
+        input_pipe2 <= input_pipe1;
+        output_pipe1 <= y;
+        output_pipe2 <= output_pipe1;
       end
         
             
-    // Combinational multiplications
-    assign b0_x0 = x0 * b0_reg;
-    assign b1_x1 = x1 * b1_reg;
-    assign b2_x2 = x2 * b2_reg;
-    assign a1_y1 = y1 * a1_reg;
-    assign a2_y2 = y2 * a2_reg;
+     /* combinational multiplications */
+    assign input_b0 = x_in * b0_reg;
+    assign input_b1 = input_pipe1 * b1_reg;
+    assign input_b2 = input_pipe2 * b2_reg;
+    assign output_a1 = output_pipe1 * a1_reg;
+    assign output_a2 = output_pipe2 * a2_reg;
     
-    //Filter equation 
-    //assign acc_ff = (b0_x + b1_x1 + b2_x2);//>>> LOG_DELTA_B;
-    //assign acc_fb = (a1_y1 + a1_y1);
-    //assign y = (acc_ff - acc_fb) >>> LOG_A0;
-    assign acc = b0_x0 + b1_x1 + b2_x2 - a1_y1 - a2_y2;
+    assign acc = input_b0 + input_b1 + input_b2 - output_a1 - output_a2;
     assign y = acc >>> LOG_A0;
     
-    always @(posedge clk) begin
+    
+    always @(posedge clk or posedge rst) begin
         if (rst) begin
             y_out <= 0;
         end else begin
-            y_out <= y >> DATA_SHIFT_OUT;
+            y_out <= y;
         end
     end
     

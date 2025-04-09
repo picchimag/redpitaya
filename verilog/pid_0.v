@@ -1,4 +1,5 @@
 // Minimal PID controller in a similar style to iir_filter2ndorder_3.v
+//NOT TESTED, PROBABLY NOT WORKING YET!
 
 `timescale 1 ns / 1 ps
 

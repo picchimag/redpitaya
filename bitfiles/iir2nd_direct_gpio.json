@@ -1,0 +1,22 @@
+{
+    "bitfile": "iir2nd_direct_gpio.bit",
+    "description": "Second-order IIR filter with direct form implementation. Includes upstream integrator that reduces sampling rate by 2^LOG_DIV factor.",
+    "build_date": "2025-01-14",
+    "parameters": { "LOG_DIV": 10,
+                    "LOG_A0": 30,
+                    "LOG_UNITY_GAIN": 9,
+                    "DATA_WIDTH": 32,
+                    "COEFF_WIDTH": 32,
+                    "GAIN_WIDTH": 18,
+                    "redpitaya_sampling_interval_s": 8e-9,
+                    "filter_sampling_interval_s": 8.192e-6
+                },
+    "registers": {  "b0": {"base_address": "0x41200000", "offset": 0, "msb": 31, "lsb": 0},
+                    "b1": {"base_address": "0x41200000", "offset": 8, "msb": 31, "lsb": 0},
+                    "b2": {"base_address": "0x41210000", "offset": 0, "msb": 31, "lsb": 0},
+                    "a1": {"base_address": "0x41210000", "offset": 8, "msb": 31, "lsb": 0},
+                    "a2": {"base_address": "0x41220000", "offset": 0, "msb": 31, "lsb": 0},
+                    "gain": {"base_address": "0x41220000", "offset": 8, "msb": 17, "lsb": 0},
+                    "reset": {"base_address": "0x41220000", "offset": 8, "msb": 31, "lsb": 31}
+                }
+  }

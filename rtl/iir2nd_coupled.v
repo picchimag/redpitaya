@@ -56,7 +56,7 @@ module iir2nd_coupled #(
     output reg signed [OUT_DATA_WIDTH-1:0] y_out_reg         // Filtered output
 );
 
-    localparam LOG_A0 = COEFF_WIDTH - 2;
+    localparam LOG_A0 = COEFF_WIDTH - 1; // For the coupled form max alpha and beta is 1.0, so LOG_A0 = COEFF_WIDTH - 1
     localparam ADC_DATA_WIDTH = 14;
     localparam INPUT_SCALE_SHIFT = IN_DATA_WIDTH - DATA_WIDTH; // 32-20 = 12
     localparam OUTPUT_SCALE_SHIFT = DATA_WIDTH - ADC_DATA_WIDTH; // 20-14 = 6
@@ -69,33 +69,25 @@ module iir2nd_coupled #(
 
     // Intermediate computation wires
     wire signed [DATA_WIDTH + COEFF_WIDTH-1:0] alpha_u, beta_v, alpha_v, beta_u;
-    wire signed [DATA_WIDTH + COEFF_WIDTH-1:0] u_new, v_new;
+    wire signed [DATA_WIDTH + COEFF_WIDTH:0] u_new_full, v_new_full;  // Extra bit for addition
+    wire signed [DATA_WIDTH-1:0] u_new, v_new;
     wire signed [DATA_WIDTH + COEFF_WIDTH-1:0] u_scaled, v_scaled;
     wire signed [OUT_DATA_WIDTH-1:0] y_out;
 
-    // Reset synchronization with hold time (same as filter_1_2)
-    reg rst_gpio_sync1, rst_gpio_sync2;
+    // GPIO controls - use counter as both sync and hold timer
     reg [3:0] reset_counter;
-    
+
     always @(posedge clk) begin
         if (rst) begin
-            rst_gpio_sync1 <= 1'b1;
-            rst_gpio_sync2 <= 1'b1;
             reset_counter <= 4'hF;
             rst_sync <= 1'b1;
         end else begin
-            rst_gpio_sync1 <= filter_reset;
-            rst_gpio_sync2 <= rst_gpio_sync1;
-            
-            if (rst_gpio_sync2) begin
-                reset_counter <= 4'hF;
-                rst_sync <= 1'b1;
+            if (filter_reset) begin
+                reset_counter <= 4'hF;  // Restart reset hold
             end else if (reset_counter > 0) begin
                 reset_counter <= reset_counter - 1;
-                rst_sync <= 1'b1;
-            end else begin
-                rst_sync <= 1'b0;
             end
+            rst_sync <= (reset_counter > 0);
         end
     end
 
@@ -133,8 +125,8 @@ module iir2nd_coupled #(
             u <= 0;
             v <= 0;
         end else if (slow_clk) begin
-            u <= u_new[DATA_WIDTH + LOG_A0 - 1:LOG_A0];  // Scale result back to DATA_WIDTH
-            v <= v_new[DATA_WIDTH + LOG_A0 - 1:LOG_A0];
+            u <= u_new;  // Already scaled to DATA_WIDTH
+            v <= v_new;
         end
     end
 
@@ -144,9 +136,13 @@ module iir2nd_coupled #(
     assign alpha_v = alpha_reg * v;
     assign beta_u = beta_reg * u;
 
-    // Coupled form equations:
-    assign u_new = (x0 <<< LOG_A0) + alpha_u - beta_v;
-    assign v_new = beta_u + alpha_v;
+    // Coupled form equations with reduced input scaling:
+    assign u_new_full = x0 + (alpha_u >>> LOG_A0) - (beta_v >>> LOG_A0);  // Scale coefficients down
+    assign v_new_full = (beta_u >>> LOG_A0) + (alpha_v >>> LOG_A0);       // Scale coefficients down
+    
+    // No additional scaling needed - results are already in correct range
+    assign u_new = u_new_full[DATA_WIDTH-1:0];
+    assign v_new = v_new_full[DATA_WIDTH-1:0];
 
 
     // Output scaling and gain application

@@ -81,29 +81,20 @@ module iir2nd_direct #(
     wire signed [OUT_DATA_WIDTH -1:0] y_out;
 
 
-    // GPIO controls - proper reset synchronization with hold time
-    reg rst_gpio_sync1, rst_gpio_sync2;
+    // GPIO controls - use counter as both sync and hold timer
     reg [3:0] reset_counter;
-    
+
     always @(posedge clk) begin
         if (rst) begin
-            rst_gpio_sync1 <= 1'b1;
-            rst_gpio_sync2 <= 1'b1;
-            reset_counter <= 4'hF;  // Hold reset for 15 cycles
+            reset_counter <= 4'hF;
             rst_sync <= 1'b1;
         end else begin
-            rst_gpio_sync1 <= filter_reset;
-            rst_gpio_sync2 <= rst_gpio_sync1;
-            
-            if (rst_gpio_sync2) begin
+            if (filter_reset) begin
                 reset_counter <= 4'hF;  // Restart reset hold
-                rst_sync <= 1'b1;
             end else if (reset_counter > 0) begin
                 reset_counter <= reset_counter - 1;
-                rst_sync <= 1'b1;
-            end else begin
-                rst_sync <= 1'b0;
             end
+            rst_sync <= (reset_counter > 0);
         end
     end
    

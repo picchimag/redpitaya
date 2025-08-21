@@ -6,6 +6,10 @@
  * Takes 32-bit input from integrator, applies the coupled form IIR filter equations
  * with relaxed timing constraints compared to the integrator stage.
  *
+ * SCALING METHODOLOGY: Unlike direct form filters, the coupled form scales each
+ * multiplication product individually before accumulation. This provides better
+ * numerical stability and prevents overflow saturation issues.
+ *
  * The coupled form provides in-phase (P) and quadrature (Q) outputs and can be more
  * numerically stable than Direct Form for certain coefficient ranges.
  *
@@ -17,6 +21,7 @@
  * - Relaxed timing constraints compared to integrator stage
  * - Processes data at reduced rate (~122 kHz with LOG_DIV=10)
  * - Provides both I and Q outputs for complex filtering
+ * - Includes overflow protection via saturation
  *
  * @param IN_DATA_WIDTH    Width of input from integrator (32 bits)
  * @param OUT_DATA_WIDTH   Width of output data samples (default: 16 bits)
@@ -39,7 +44,8 @@ module iir2nd_coupled #(
     parameter IN_DATA_WIDTH = 32,    // Input from integrator (32-bit)
     parameter OUT_DATA_WIDTH = 16,   // Output data width
     parameter DATA_WIDTH = 20,       // Internal processing width
-    parameter COEFF_WIDTH = 20,      // Coefficient width  
+    parameter COEFF_WIDTH = 20,      // Coefficient width
+    parameter STATE_EXTRA_BITS = 14, // Extra guard bits for state variables to prevent saturation
     parameter IN_COEFF_WIDTH = 32,   // Input coefficient width from GPIO
     parameter LOG_UNITY_GAIN = 10    // Logarithm of unity gain
 
@@ -60,18 +66,18 @@ module iir2nd_coupled #(
     localparam ADC_DATA_WIDTH = 14;
     localparam INPUT_SCALE_SHIFT = IN_DATA_WIDTH - DATA_WIDTH; // 32-20 = 12
     localparam OUTPUT_SCALE_SHIFT = DATA_WIDTH - ADC_DATA_WIDTH; // 20-14 = 6
+    localparam STATE_WIDTH = DATA_WIDTH + STATE_EXTRA_BITS; // 20 + 4 = 24 bits for state variables
 
     // Internal registers
     reg rst_sync;
     reg signed [DATA_WIDTH-1:0] x0;
-    reg signed [DATA_WIDTH-1:0] u, v;  // Coupled form state variables
+    reg signed [STATE_WIDTH-1:0] u, v;  // Coupled form state variables with extra guard bits
     reg signed [COEFF_WIDTH-1:0] alpha_reg, beta_reg, gainP_reg, gainQ_reg;
 
-    // Intermediate computation wires
-    wire signed [DATA_WIDTH + COEFF_WIDTH-1:0] alpha_u, beta_v, alpha_v, beta_u;
-    wire signed [DATA_WIDTH + COEFF_WIDTH:0] u_new_full, v_new_full;  // Extra bit for addition
-    wire signed [DATA_WIDTH-1:0] u_new, v_new;
-    wire signed [DATA_WIDTH + COEFF_WIDTH-1:0] u_scaled, v_scaled;
+    // Intermediate computation wires - scaled products approach (matching Python)
+    wire signed [STATE_WIDTH + COEFF_WIDTH-1:0] alpha_u, beta_v, alpha_v, beta_u; // Wider for multiplication
+    wire signed [STATE_WIDTH-1:0] alpha_u_scaled, beta_v_scaled, alpha_v_scaled, beta_u_scaled; // Scaled results
+    wire signed [STATE_WIDTH-1:0] u_new, v_new; // New state values with extra bits
     wire signed [OUT_DATA_WIDTH-1:0] y_out;
 
     // GPIO controls - use counter as both sync and hold timer
@@ -120,35 +126,66 @@ module iir2nd_coupled #(
     end
 
     // Coupled form filter state updates - only when slow clock is active
+    // Include overflow handling with wider state variables for safety
+    // Coupled form filter state updates - only when slow clock is active
+    // Include saturation protection for STATE_WIDTH variables
     always @(posedge clk) begin
         if (rst_sync) begin
             u <= 0;
             v <= 0;
         end else if (slow_clk) begin
-            u <= u_new;  // Already scaled to DATA_WIDTH
-            v <= v_new;
+            // Saturation protection to prevent overflow
+            if (u_new > ((1 << (STATE_WIDTH-1)) - 1)) begin
+                u <= (1 << (STATE_WIDTH-1)) - 1;  // Max positive for STATE_WIDTH
+            end else if (u_new < (-(1 << (STATE_WIDTH-1)))) begin
+                u <= -(1 << (STATE_WIDTH-1));     // Max negative for STATE_WIDTH
+            end else begin
+                u <= u_new;
+            end
+            
+            if (v_new > ((1 << (STATE_WIDTH-1)) - 1)) begin
+                v <= (1 << (STATE_WIDTH-1)) - 1;  // Max positive for STATE_WIDTH
+            end else if (v_new < (-(1 << (STATE_WIDTH-1)))) begin
+                v <= -(1 << (STATE_WIDTH-1));     // Max negative for STATE_WIDTH
+            end else begin
+                v <= v_new;
+            end
         end
     end
 
-    // Combinational coupled form computations
+    // Combinational coupled form computations - MATCH PYTHON APPROACH EXACTLY
     assign alpha_u = alpha_reg * u;
     assign beta_v = beta_reg * v;
     assign alpha_v = alpha_reg * v;
     assign beta_u = beta_reg * u;
 
-    // Coupled form equations with reduced input scaling:
-    assign u_new_full = x0 + (alpha_u >>> LOG_A0) - (beta_v >>> LOG_A0);  // Scale coefficients down
-    assign v_new_full = (beta_u >>> LOG_A0) + (alpha_v >>> LOG_A0);       // Scale coefficients down
+    // Scale each product individually
+    assign alpha_u_scaled = alpha_u >>> LOG_A0;
+    assign beta_v_scaled = beta_v >>> LOG_A0;
+    assign alpha_v_scaled = alpha_v >>> LOG_A0;
+    assign beta_u_scaled = beta_u >>> LOG_A0;
+
+    // Coupled form equations - properly extend x0 to STATE_WIDTH
+    wire signed [STATE_WIDTH-1:0] x0_extended;
+    assign x0_extended = {{STATE_EXTRA_BITS{x0[DATA_WIDTH-1]}}, x0};
+    assign u_new = x0_extended + alpha_u_scaled - beta_v_scaled;
+    assign v_new = beta_u_scaled + alpha_v_scaled;
+
+
+    // Output scaling and gain application - use FULL STATE_WIDTH variables
+    wire signed [STATE_WIDTH + COEFF_WIDTH-1:0] u_gain, v_gain;
+    assign u_gain = gainP_reg * u;  // Use full u state variable (STATE_WIDTH)
+    assign v_gain = gainQ_reg * v;  // Use full v state variable (STATE_WIDTH)
     
-    // No additional scaling needed - results are already in correct range
-    assign u_new = u_new_full[DATA_WIDTH-1:0];
-    assign v_new = v_new_full[DATA_WIDTH-1:0];
-
-
-    // Output scaling and gain application
-    assign u_scaled = (gainP_reg * u) >>> LOG_UNITY_GAIN; // Scale I output
-    assign v_scaled = (gainQ_reg * v) >>> LOG_UNITY_GAIN; // Scale Q
-    assign y_out = (u_scaled + v_scaled) >>> OUTPUT_SCALE_SHIFT; // Combine I and Q, scale to output width
+    // Scale gain products and combine
+    wire signed [STATE_WIDTH-1:0] u_scaled_full, v_scaled_full;
+    assign u_scaled_full = u_gain >>> LOG_UNITY_GAIN;
+    assign v_scaled_full = v_gain >>> LOG_UNITY_GAIN;
+    
+    // Combine I and Q channels and scale to output width
+    wire signed [STATE_WIDTH:0] uv_sum;  // Extra bit for addition
+    assign uv_sum = u_scaled_full + v_scaled_full;
+    assign y_out = uv_sum >>> (STATE_WIDTH - OUT_DATA_WIDTH);
     
     // Output register - maintains value for DAC between filter updates
     always @(posedge clk) begin

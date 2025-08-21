@@ -66,6 +66,8 @@ class ComputeCoeff:
         alpha = r * np.cos(omega)
         beta = r * np.sin(omega)
 
+        print(r, omega, alpha, beta)
+
         c1 = gainP / np.sqrt(1 - r**2)
         c2 = gainQ / np.sqrt(1 - r**2)
 

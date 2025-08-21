@@ -161,14 +161,14 @@ if __name__ == "__main__":
 
     coeff_calc = ComputeCoeff(config_file) 
 
-    ho_coeffs = coeff_calc.harmonic_oscillator(frequency=150, Q=50, gain=1, response='position')
-    ho_coeffs = coeff_calc.harmonic_oscillator_coupled(frequency=200, Q=50, gainP=0, gainQ=-5)
+    ho_coeffs = coeff_calc.harmonic_oscillator(frequency=200, Q=50, gain=1, response='position')
+    ho_coeffs = coeff_calc.harmonic_oscillator_coupled(frequency=200, Q=50, gainP=-0.1, gainQ=0)
     #ho_coeffs = coeff_calc.harmonic_oscillator_coupled(frequency=200, Q=50, gainP=-0.03, gainQ=0)
 
 
 
     rp.connect()
-    #rp.load_bitfile()
+    rp.load_bitfile()
     
     rp.enable(False)
     #print("Current parameters:", rp.get_params())

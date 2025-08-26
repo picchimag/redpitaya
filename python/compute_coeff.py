@@ -1,5 +1,7 @@
 import numpy as np
-from scipy.signal import bilinear, butter, iirfilter
+from scipy.signal import bilinear, butter, ss2tf, iirfilter
+from scipy.linalg import solve_continuous_are
+
 
 
 class ComputeCoeff:
@@ -44,7 +46,7 @@ class ComputeCoeff:
         sf = 1 / self.sampling_interval
         omega_0 = 2 * np.pi * frequency
         
-        if response == 'position':
+        if response == 'velocity':
             num = np.array([0, omega_0, 0]) / Q * np.sqrt(2)
         else:  # velocity
             num = np.array([omega_0**2]) / Q * np.sqrt(2)
@@ -76,6 +78,65 @@ class ComputeCoeff:
         
         
         return self._format_iir_coeffs_coupled(alpha, beta, c1, c2)
+    
+
+    def harmonic_oscillator_kalman(self, frequency, Q, qa_psd, ry_psd,
+                                gain=1.0, response='position',
+                                gamma_factor=np.sqrt(2),
+                                norm='unity_at_f0'):
+        """
+        Steady-state Kalman observer (position measured). Returns ONE IIR like your other function.
+        response: 'position' -> x̂, 'velocity' -> v̂
+        norm: 'unity_at_f0' | 'dc_unity' | None
+        """
+
+        fs  = 1.0 / self.sampling_interval
+        w0  = 2*np.pi*frequency
+        gamma = gamma_factor * w0 / Q
+
+        # Continuous-time plant
+        A = np.array([[0.0,    1.0],
+                    [-w0**2, -gamma]])
+        C = np.array([[1.0, 0.0]])          # measuring position
+        Qc = np.zeros((2,2)); Qc[1,1] = qa_psd   # white accel noise on v̇
+        R  = np.array([[ry_psd]])
+
+        # Steady-state Kalman gain (dual CARE)
+        P = solve_continuous_are(A.T, C.T, Qc, R)
+        L = (P @ C.T) / R                   # shape (2,1)
+        L1, L2 = float(L[0,0]), float(L[1,0])
+
+        # Closed-form continuous-time TFs y->x̂ and y->v̂
+        # Denominator Δ(s) = s^2 + (γ+L1)s + (ω0^2 + L2 + γ L1)
+        den_c = np.array([1.0, (gamma+L1), (w0**2 + L2 + gamma*L1)])
+
+        if response == 'position':
+            # Hx(s) = (L1*s + (L1*γ + L2)) / Δ(s)
+            num_c = np.array([L1, (L1*gamma + L2)])
+        else:
+            # Hv(s) = (L2*s - L1*ω0^2) / Δ(s)
+            num_c = np.array([L2, -L1*w0**2])
+
+        # Bilinear (Tustin). This returns length-3 b,a even if num_c is order-1.
+        b, a = bilinear(num_c, den_c, fs=fs)
+
+        # Optional normalization to avoid tiny numerators in fixed-point
+        if norm is not None:
+            if norm == 'dc_unity':
+                H0 = (b[0] + b[1] + b[2]) / (a[0] + a[1] + a[2])
+                if H0 != 0:
+                    b = b / H0
+            elif norm == 'unity_at_f0':
+                Om = 2*np.pi*frequency / fs
+                z = np.exp(1j*Om)
+                Hf0 = (b[0] + b[1]/z + b[2]/(z*z)) / (a[0] + a[1]/z + a[2]/(z*z))
+                mag = np.abs(Hf0)
+                if mag != 0:
+                    b = b / mag
+            # else: leave as-is
+
+        return self._format_iir_coeffs(b, a, gain)
+
     
          
     def lowpass(self, frequency, order=2, gain=1):

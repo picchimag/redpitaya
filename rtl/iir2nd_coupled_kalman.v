@@ -40,14 +40,13 @@
 
 `timescale 1 ns / 1 ps
 
-module iir2nd_coupled #(
+module iir2nd_coupled_kalman #(
     parameter IN_DATA_WIDTH = 32,    // Input from integrator (32-bit)
     parameter OUT_DATA_WIDTH = 16,   // Output data width
-    parameter IN_COEFF_WIDTH = 32,   // Input coefficient width from GPIO
-    
     parameter DATA_WIDTH = 20,       // Internal processing width
     parameter COEFF_WIDTH = 20,      // Coefficient width
     parameter STATE_EXTRA_BITS = 14, // Extra guard bits for state variables to prevent saturation
+    parameter IN_COEFF_WIDTH = 32,   // Input coefficient width from GPIO
     parameter LOG_UNITY_GAIN = 10    // Logarithm of unity gain
 
 )(

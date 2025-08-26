@@ -157,12 +157,14 @@ if __name__ == "__main__":
     # Load filter configuration
     config_file = "../bitfiles/iir2nd_direct_gpio.json"
     config_file = "../bitfiles/iir2nd_coupled_gpio.json"
+    config_file = "../bitfiles/iir2nd_coupled_axi.json"
     rp = RedPitaya("171.64.56.58", config_file)
 
     coeff_calc = ComputeCoeff(config_file) 
 
-    ho_coeffs = coeff_calc.harmonic_oscillator(frequency=200, Q=50, gain=1, response='position')
-    ho_coeffs = coeff_calc.harmonic_oscillator_coupled(frequency=200, Q=50, gainP=-0.1, gainQ=0)
+    ho_coeffs = coeff_calc.harmonic_oscillator(frequency=200, Q=50, gain=1, response='velocity')
+    ho_coeffs = coeff_calc.harmonic_oscillator_kalman(frequency=200, Q=50, qa_psd=1, ry_psd=1e-5, gain=1, response='position')
+    ho_coeffs = coeff_calc.harmonic_oscillator_coupled(frequency=300, Q=50, gainP=0, gainQ=10 )
     #ho_coeffs = coeff_calc.harmonic_oscillator_coupled(frequency=200, Q=50, gainP=-0.03, gainQ=0)
 
 

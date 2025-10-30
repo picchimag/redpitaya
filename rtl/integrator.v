@@ -37,7 +37,7 @@ module integrator #(
     
     // Internal registers
     reg [LOG_DIV-1:0] counter;
-    reg signed [OUT_DATA_WIDTH - 1:0] x_sum;
+    reg signed [IN_DATA_WIDTH + LOG_DIV - 1:0] x_sum;
 
 
    

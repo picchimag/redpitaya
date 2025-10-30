@@ -75,11 +75,16 @@ module iir2nd_coupled #(
     reg signed [STATE_WIDTH-1:0] u, v;  // Coupled form state variables with extra guard bits
     reg signed [COEFF_WIDTH-1:0] alpha_reg, beta_reg, gainP_reg, gainQ_reg;
 
-    // Intermediate computation wires - scaled products approach (matching Python)
-    wire signed [STATE_WIDTH + COEFF_WIDTH-1:0] alpha_u, beta_v, alpha_v, beta_u; // Wider for multiplication
-    wire signed [STATE_WIDTH-1:0] alpha_u_scaled, beta_v_scaled, alpha_v_scaled, beta_u_scaled; // Scaled results
+    // Intermediate computation wires - grouped by function
+    wire signed [STATE_WIDTH + COEFF_WIDTH-1:0] alpha_u, beta_v, alpha_v, beta_u; // Multiplication products
+    wire signed [STATE_WIDTH-1:0] alpha_u_scaled, beta_v_scaled, alpha_v_scaled, beta_u_scaled; // Scaled products
     wire signed [STATE_WIDTH-1:0] u_new, v_new; // New state values with extra bits
-    wire signed [OUT_DATA_WIDTH-1:0] y_out;
+    wire signed [STATE_WIDTH-1:0] x0_extended; // Sign-extended input
+    wire signed [STATE_WIDTH + COEFF_WIDTH-1:0] u_gain, v_gain; // Output gain products
+    wire signed [STATE_WIDTH-1:0] u_scaled_full, v_scaled_full; // Scaled gain products
+    wire signed [STATE_WIDTH:0] uv_sum; // Combined I/Q output
+    wire signed [STATE_WIDTH:0] uv_scaled; // Scaled for output width
+    wire signed [OUT_DATA_WIDTH-1:0] y_out; // Final output with saturation
 
     // GPIO controls - use counter as both sync and hold timer
     reg [3:0] reset_counter;
@@ -167,26 +172,26 @@ module iir2nd_coupled #(
     assign beta_u_scaled = beta_u >>> LOG_A0;
 
     // Coupled form equations - properly extend x0 to STATE_WIDTH
-    wire signed [STATE_WIDTH-1:0] x0_extended;
     assign x0_extended = {{STATE_EXTRA_BITS{x0[DATA_WIDTH-1]}}, x0};
     assign u_new = x0_extended + alpha_u_scaled - beta_v_scaled;
     assign v_new = beta_u_scaled + alpha_v_scaled;
 
-
     // Output scaling and gain application - use FULL STATE_WIDTH variables
-    wire signed [STATE_WIDTH + COEFF_WIDTH-1:0] u_gain, v_gain;
     assign u_gain = gainP_reg * u;  // Use full u state variable (STATE_WIDTH)
     assign v_gain = gainQ_reg * v;  // Use full v state variable (STATE_WIDTH)
     
     // Scale gain products and combine
-    wire signed [STATE_WIDTH-1:0] u_scaled_full, v_scaled_full;
     assign u_scaled_full = u_gain >>> LOG_UNITY_GAIN;
     assign v_scaled_full = v_gain >>> LOG_UNITY_GAIN;
     
-    // Combine I and Q channels and scale to output width
-    wire signed [STATE_WIDTH:0] uv_sum;  // Extra bit for addition
+    // Combine I and Q channels and scale to output width with saturation
     assign uv_sum = u_scaled_full + v_scaled_full;
-    assign y_out = uv_sum >>> (STATE_WIDTH - OUT_DATA_WIDTH);
+    
+    // Simple saturation applied directly to scaled result
+    assign uv_scaled = uv_sum >>> (STATE_WIDTH - OUT_DATA_WIDTH);
+    assign y_out = (uv_scaled > {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}}) ? {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}} :  // Positive saturation
+                   (uv_scaled < {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}}) ? {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}} :  // Negative saturation  
+                   uv_scaled[OUT_DATA_WIDTH-1:0];  // Normal case
     
     // Output register - maintains value for DAC between filter updates
     always @(posedge clk) begin

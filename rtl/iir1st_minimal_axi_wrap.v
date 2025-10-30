@@ -5,8 +5,10 @@
 // - N_REGS = 2**LOG_NPAR
 // - Only edit: USER MAP and USER INSTANTIATION
 // -------------------------------------------------------------
-module iir2nd_direct_axi_wrap #(
+module iir1st_minimal_axi_wrap #(
     // AXI
+    parameter integer IN_DATA_WIDTH = 18,
+    parameter integer OUT_DATA_WIDTH = 16,
     parameter integer C_S_AXI_ADDR_WIDTH = 8,
     parameter integer C_S_AXI_DATA_WIDTH = 32,
     // Register bank
@@ -38,13 +40,15 @@ module iir2nd_direct_axi_wrap #(
     // USER PORTS BEGIN (edit to match your IP)
     // ---------------------------------------------------------
     input  wire                              slow_clk,   // optional sample boundary/enable
-    input  wire  signed [31:0]               x_in,       // example data input
-    output wire  signed [15:0]               y_out       // example data output
+    input  wire  signed [IN_DATA_WIDTH-1:0]               x_in,       // example data input
+    output wire  signed [OUT_DATA_WIDTH-1:0]               y_out       // example data output
 );
 
 
     localparam integer ADDR_LSB = 2;                  // 32-bit words
     localparam integer N_REGS   = (1 << LOG_NPAR);    // number of regs
+    localparam integer N_READONLY = 0;                // Registers 6 and 7 are read-only
+
     localparam [1:0]   RESP_OK  = 2'b00;
 
 
@@ -94,7 +98,7 @@ module iir2nd_direct_axi_wrap #(
         if (!s_axi_aresetn) begin
             for (k = 0; k < N_REGS; k = k + 1) regs[k] <= 32'd0;
         end else if (write_fire) begin
-            if (widx < N_REGS)
+            if (widx < N_REGS - N_READONLY)
                 regs[widx] <= (regs[widx] & ~wmask32(s_axi_wstrb))
                             | (s_axi_wdata &  wmask32(s_axi_wstrb));
         end
@@ -138,10 +142,7 @@ module iir2nd_direct_axi_wrap #(
     // Example (direct-form):
     wire signed [31:0] b0   = regs[0];  // +0x00
     wire signed [31:0] b1   = regs[1];  // +0x04
-    wire signed [31:0] b2   = regs[2];  // +0x08
-    wire signed [31:0] a1   = regs[3];  // +0x0C
-    wire signed [31:0] a2   = regs[4];  // +0x10
-    wire signed [31:0] gain = regs[5];  // +0x14 (lower GAIN bits used)
+    wire signed [31:0] a1   = regs[2];  // +0x08
     wire        [31:0] control  = regs[6];  // +0x18  bit0 = soft reset
 
     // choose the filter clock/reset (simple: tie to AXI)
@@ -153,23 +154,19 @@ module iir2nd_direct_axi_wrap #(
     // USER INSTANTIATION BEGIN (drop your module here)
     // ---------------------------------------------------------
     // All module parameter VALUES are set right here (nowhere else).
-    iir2nd_direct #(
-        .IN_DATA_WIDTH  (32),
-        .OUT_DATA_WIDTH (16),
-        .DATA_WIDTH     (32),
-        .COEFF_WIDTH    (32),
-        .GAIN_WIDTH     (18)
+    iir1st_minimal #(
+        .IN_DATA_WIDTH  (IN_DATA_WIDTH),
+        .OUT_DATA_WIDTH (OUT_DATA_WIDTH),
+        .DATA_WIDTH     (18),
+        .COEFF_WIDTH    (25)
     ) u_filter (
         .clk          (fclk),
         .rst          (frst),
         .x_in         (x_in),                 // 32-bit
         .slow_clk     (slow_clk),
-        .b0           (b0[31:0]),        // module uses only COEFF_WIDTH LSBs
-        .b1           (b1[31:0]),
-        .b2           (b2[31:0]),
-        .a1           (a1[31:0]),
-        .a2           (a2[31:0]),
-        .gain_in      (gain[17:0]),      // lower 18 bits
+        .b0           (b0[24:0]),        // module uses only COEFF_WIDTH LSBs
+        .b1           (b1[24:0]),
+        .a1           (a1[24:0]),
         .filter_reset (control[0]),
         .y_out_reg    (y_out)                // change to .y_out if needed
     );

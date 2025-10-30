@@ -1,16 +1,16 @@
 `timescale 1 ns / 1 ps
 // -------------------------------------------------------------
-// Minimal AXI4-Lite wrapper for iir2nd_direct
+// Minimal AXI4-Lite wrapper for peak_detector
 // - 32-bit word regs, offset = 4*index (ADDR_LSB=2)
 // - N_REGS = 2**LOG_NPAR
 // - Only edit: USER MAP and USER INSTANTIATION
 // -------------------------------------------------------------
-module iir2nd_direct_axi_wrap #(
+module peak_detector_axi_wrap #(
     // AXI
     parameter integer C_S_AXI_ADDR_WIDTH = 8,
     parameter integer C_S_AXI_DATA_WIDTH = 32,
     // Register bank
-    parameter integer LOG_NPAR = 3  // 3 -> 8 regs
+    parameter integer LOG_NPAR = 4  // 4 -> 16 regs (expanded for more readonly registers)
     
 )(
     // AXI4-Lite
@@ -37,19 +37,24 @@ module iir2nd_direct_axi_wrap #(
     // ---------------------------------------------------------
     // USER PORTS BEGIN (edit to match your IP)
     // ---------------------------------------------------------
-    input  wire                              slow_clk,   // optional sample boundary/enable
-    input  wire  signed [31:0]               x_in,       // example data input
-    output wire  signed [15:0]               y_out       // example data output
+    input  wire                              slow_clk,      // Sample clock enable
+    input  wire  signed [15:0]               x_in,          // ADC sample input
+    output wire                              peak_detected, // Peak detection pulse
+    output wire  signed [15:0]               peak_value_out,  // Selected output (integration or max)
+    output wire  signed [15:0]               peak_integral_out, // Integration accumulator result
+    output wire  signed [15:0]               peak_max_out,    // Maximum value detected
+    output wire         [15:0]               max_delay        // Delay at which maximum was detected
 );
 
 
     localparam integer ADDR_LSB = 2;                  // 32-bit words
     localparam integer N_REGS   = (1 << LOG_NPAR);    // number of regs
+    localparam integer N_READONLY = 6;                // Registers 10-15 are read-only
     localparam [1:0]   RESP_OK  = 2'b00;
 
 
     // ----------------------------
-    // AXI write channel (tiny)
+    // AXI write channel
     // ----------------------------
     reg awready, wready, bvalid;
     reg [1:0] bresp;
@@ -92,9 +97,10 @@ module iir2nd_direct_axi_wrap #(
     integer k;
     always @(posedge s_axi_aclk) begin
         if (!s_axi_aresetn) begin
-            for (k = 0; k < N_REGS; k = k + 1) regs[k] <= 32'd0;
+            // Only initialize writable registers to 0, leave readonly registers alone
+            for (k = 0; k < (N_REGS - N_READONLY); k = k + 1) regs[k] <= 32'd0;
         end else if (write_fire) begin
-            if (widx < N_REGS)
+            if (widx < (N_REGS - N_READONLY))  // Protect last N_READONLY registers from AXI writes
                 regs[widx] <= (regs[widx] & ~wmask32(s_axi_wstrb))
                             | (s_axi_wdata &  wmask32(s_axi_wstrb));
         end
@@ -133,45 +139,63 @@ module iir2nd_direct_axi_wrap #(
     end
 
     // ---------------------------------------------------------
-    // USER MAP BEGIN  (name your registers here)
+    // USER MAP BEGIN (edit register assignments to match your IP)
     // ---------------------------------------------------------
-    // Example (direct-form):
-    wire signed [31:0] b0   = regs[0];  // +0x00
-    wire signed [31:0] b1   = regs[1];  // +0x04
-    wire signed [31:0] b2   = regs[2];  // +0x08
-    wire signed [31:0] a1   = regs[3];  // +0x0C
-    wire signed [31:0] a2   = regs[4];  // +0x10
-    wire signed [31:0] gain = regs[5];  // +0x14 (lower GAIN bits used)
-    wire        [31:0] control  = regs[6];  // +0x18  bit0 = soft reset
+    //Control registers
+    
+    wire signed [31:0] trig_level_reg    = regs[0];   // +0x00
+    wire signed [31:0] fall_level_reg    = regs[1];   // +0x04
+    wire signed [31:0] base_return_reg   = regs[2];   // +0x08
+    wire        [31:0] dead_time_reg     = regs[3];   // +0x0C
+    wire        [31:0] control_reg       = regs[4];   // +0x10  (bit 0=filter_reset, bit 1=invert_input)
+    wire        [31:0] n_integration_reg = regs[5];   // +0x14
+    // regs[6] is read-only status register
+    
+    // Wire from peak detector module
+    wire        [1:0]  state_out;                       // FSM state
+    
+    // Status register assignments (read-only) - using registers 10-15
+    always @(posedge s_axi_aclk) begin
+        regs[10] <= {30'd0, state_out};                  // Register 10: state_out[1:0]
+        regs[11] <= {16'd0, max_delay};                  // Register 11: max_delay[15:0]
+        regs[12] <= {peak_value_out, x_in};              // Register 12: peak_value_out[31:16], x_in[15:0]
+        regs[13] <= {16'd0, peak_integral_out};          // Register 13: peak_integral_out[15:0]
+        regs[14] <= {16'd0, peak_max_out};               // Register 14: peak_max_out[15:0]
+        regs[15] <= 32'd0;                               // Register 15: reserved
+    end
 
     // choose the filter clock/reset (simple: tie to AXI)
     wire fclk = s_axi_aclk;
     wire frst = ~s_axi_aresetn;  //AXI reset is active low, filter reset is active high
 
-
     // ---------------------------------------------------------
     // USER INSTANTIATION BEGIN (drop your module here)
     // ---------------------------------------------------------
     // All module parameter VALUES are set right here (nowhere else).
-    iir2nd_direct #(
-        .IN_DATA_WIDTH  (32),
-        .OUT_DATA_WIDTH (16),
-        .DATA_WIDTH     (32),
-        .COEFF_WIDTH    (32),
-        .GAIN_WIDTH     (18)
-    ) u_filter (
-        .clk          (fclk),
-        .rst          (frst),
-        .x_in         (x_in),                 // 32-bit
-        .slow_clk     (slow_clk),
-        .b0           (b0[31:0]),        // module uses only COEFF_WIDTH LSBs
-        .b1           (b1[31:0]),
-        .b2           (b2[31:0]),
-        .a1           (a1[31:0]),
-        .a2           (a2[31:0]),
-        .gain_in      (gain[17:0]),      // lower 18 bits
-        .filter_reset (control[0]),
-        .y_out_reg    (y_out)                // change to .y_out if needed
+    peak_detector #(
+        .DATA_WIDTH        (16),
+        .COUNTER_WIDTH     (16),
+        .INTEGRATION_WIDTH (32)                          // Increased to 32 bits
+    ) u_peak_detector (
+        .clk               (fclk),
+        .rst               (frst),
+        .x_in              (x_in),                       // 16-bit ADC input
+        .slow_clk          (slow_clk),
+        .trig_level        (trig_level_reg[15:0]),       // Use lower 16 bits
+        .fall_level        (fall_level_reg[15:0]),
+        .base_return       (base_return_reg[15:0]),
+        .dead_time_setting (dead_time_reg[15:0]),
+        .n_integration     (n_integration_reg[15:0]),    // Use lower 16 bits
+        .log_attenuation   (control_reg[7:4]),           // Control bits [7:4]: log_attenuation
+        .integration_mode  (control_reg[2]),             // Control bit 2: integration mode
+        .invert_input      (control_reg[1]),             // Control bit 1: polarity inversion
+        .filter_reset      (control_reg[0]),             // Control bit 0: filter reset
+        .peak_detected     (peak_detected),              // Output wire
+        .peak_value_out    (peak_value_out),             // Selected output wire
+        .peak_integral_out (peak_integral_out),          // Integration output wire
+        .peak_max_out      (peak_max_out),               // Max value output wire
+        .max_delay         (max_delay),                  // Max delay output wire
+        .state_out         (state_out)                   // Connect to status register
     );
 
 endmodule

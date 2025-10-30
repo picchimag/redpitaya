@@ -5,7 +5,7 @@
 // - N_REGS = 2**LOG_NPAR
 // - Only edit: USER MAP and USER INSTANTIATION
 // -------------------------------------------------------------
-module iir2nd_direct_axi_wrap #(
+module pid_simple_axi_wrap #(
     // AXI
     parameter integer C_S_AXI_ADDR_WIDTH = 8,
     parameter integer C_S_AXI_DATA_WIDTH = 32,
@@ -136,13 +136,14 @@ module iir2nd_direct_axi_wrap #(
     // USER MAP BEGIN  (name your registers here)
     // ---------------------------------------------------------
     // Example (direct-form):
-    wire signed [31:0] b0   = regs[0];  // +0x00
-    wire signed [31:0] b1   = regs[1];  // +0x04
-    wire signed [31:0] b2   = regs[2];  // +0x08
-    wire signed [31:0] a1   = regs[3];  // +0x0C
-    wire signed [31:0] a2   = regs[4];  // +0x10
-    wire signed [31:0] gain = regs[5];  // +0x14 (lower GAIN bits used)
-    wire        [31:0] control  = regs[6];  // +0x18  bit0 = soft reset
+    wire signed [31:0] setpoint = regs[0]; // +0x18
+    wire signed [31:0] Kp   = regs[1];  // +0x00
+    wire signed [31:0] Ki   = regs[2];  // +0x04
+    wire signed [31:0] Kd   = regs[3];  // +0x08
+    wire signed [31:0] alpha_d   = regs[4];  // +0x08
+    wire signed [31:0] gain = regs[5];  // +0x0C
+    wire        [31:0] control  = regs[6];  // +0x10
+    
 
     // choose the filter clock/reset (simple: tie to AXI)
     wire fclk = s_axi_aclk;
@@ -153,25 +154,31 @@ module iir2nd_direct_axi_wrap #(
     // USER INSTANTIATION BEGIN (drop your module here)
     // ---------------------------------------------------------
     // All module parameter VALUES are set right here (nowhere else).
-    iir2nd_direct #(
+    pid_simple #(
         .IN_DATA_WIDTH  (32),
         .OUT_DATA_WIDTH (16),
         .DATA_WIDTH     (32),
+        .INTEGRATOR_WIDTH   (56), // wider to avoid overflow in integrator
         .COEFF_WIDTH    (32),
+        .ALPHA_WIDTH    (18),
+        .GAIN_DATA_WIDTH (25),
         .GAIN_WIDTH     (18)
-    ) u_filter (
+    ) u_pid (
         .clk          (fclk),
         .rst          (frst),
         .x_in         (x_in),                 // 32-bit
         .slow_clk     (slow_clk),
-        .b0           (b0[31:0]),        // module uses only COEFF_WIDTH LSBs
-        .b1           (b1[31:0]),
-        .b2           (b2[31:0]),
-        .a1           (a1[31:0]),
-        .a2           (a2[31:0]),
+        .setpoint     (setpoint[31:0]),           // 32-bit
+        .Kp           (Kp[31:0]),        // module uses only COEFF_WIDTH LSBs
+        .Ki           (Ki[31:0]),
+        .Kd           (Kd[31:0]),
+        .alpha_d      (alpha_d[17:0]),  // LPF for D term
         .gain_in      (gain[17:0]),      // lower 18 bits
         .filter_reset (control[0]),
+        .i_reset      (control[1]),          // integrator reset
         .y_out_reg    (y_out)                // change to .y_out if needed
     );
 
 endmodule
+
+

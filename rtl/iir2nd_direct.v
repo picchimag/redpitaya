@@ -78,7 +78,9 @@ module iir2nd_direct #(
     wire signed [DATA_WIDTH-1:0] y;
     wire signed [GAIN_DATA_WIDTH-1:0] y_shift;
     wire signed [GAIN_DATA_WIDTH + GAIN_WIDTH - 1:0] y_gain;
+    wire signed [GAIN_DATA_WIDTH + GAIN_WIDTH - 1:0] y_scaled;  // Scaled before saturation
     wire signed [OUT_DATA_WIDTH -1:0] y_out;
+    wire saturation_detected;  // Saturation detection flag
 
 
     // GPIO controls - use counter as both sync and hold timer
@@ -129,9 +131,12 @@ module iir2nd_direct #(
         end
     end
 
+    // Saturation detection - check if current output y would saturate when stored in DATA_WIDTH
+    assign saturation_detected = (y > ((1 << (DATA_WIDTH-1)) - 1)) || (y < (-(1 << (DATA_WIDTH-1))));
+
     // Pipeline for filter delay registers - only update when slow clock is active
     always @(posedge clk) begin
-          if (rst_sync) begin
+          if (rst_sync || saturation_detected) begin  // Auto-reset on saturation
             x1 <= 0;
             x2 <= 0;
             y1 <= 0;  // Reset y1 as well
@@ -158,10 +163,13 @@ module iir2nd_direct #(
     assign y = acc >>> LOG_A0;
 
 
-    // Gain and output scaling
+    // Gain and output scaling with saturation
     assign y_shift = y >>> (DATA_WIDTH - GAIN_DATA_WIDTH);
-    assign y_gain  =  y_shift * gain_reg;     //25*18
-    assign y_out  = y_gain >>> (LOG_UNITY_GAIN+DATA_SHIFT_OUT);
+    assign y_gain  = y_shift * gain_reg;     //25*18
+    assign y_scaled = y_gain >>> (LOG_UNITY_GAIN+DATA_SHIFT_OUT);
+    assign y_out = (y_scaled > {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}}) ? {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}} :  // Positive saturation
+                   (y_scaled < {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}}) ? {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}} :  // Negative saturation  
+                   y_scaled[OUT_DATA_WIDTH-1:0];  // Normal case
 
    
     // output register - only update when new pipeline result is available  

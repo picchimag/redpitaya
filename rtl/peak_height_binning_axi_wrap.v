@@ -1,16 +1,16 @@
 `timescale 1 ns / 1 ps
 // -------------------------------------------------------------
-// Minimal AXI4-Lite wrapper for iir2nd_direct
+// Minimal AXI4-Lite wrapper for peak_height_binning
 // - 32-bit word regs, offset = 4*index (ADDR_LSB=2)
 // - N_REGS = 2**LOG_NPAR
 // - Only edit: USER MAP and USER INSTANTIATION
 // -------------------------------------------------------------
-module iir2nd_direct_axi_wrap #(
+module peak_height_binning_axi_wrap #(
     // AXI
     parameter integer C_S_AXI_ADDR_WIDTH = 8,
     parameter integer C_S_AXI_DATA_WIDTH = 32,
     // Register bank
-    parameter integer LOG_NPAR = 3  // 3 -> 8 regs
+    parameter integer LOG_NPAR = 4  // 4 -> 16 regs
     
 )(
     // AXI4-Lite
@@ -37,16 +37,17 @@ module iir2nd_direct_axi_wrap #(
     // ---------------------------------------------------------
     // USER PORTS BEGIN (edit to match your IP)
     // ---------------------------------------------------------
-    input  wire                              slow_clk,   // optional sample boundary/enable
-    input  wire  signed [31:0]               x_in,       // example data input
-    output wire  signed [15:0]               y_out       // example data output
+    input  wire                              slow_clk,          // Slow clock (available for future use)
+    input  wire                              peak_detected,     // Peak detection trigger
+    input  wire signed [15:0]                peak_value_in,     // Peak amplitude
+    output wire [15:0]                       band_detected      // Energy band filtered output (unsigned 14-bit DAC)
 );
 
 
     localparam integer ADDR_LSB = 2;                  // 32-bit words
-    localparam integer N_REGS   = (1 << LOG_NPAR);    // number of regs
+    localparam integer N_REGS = (1 << LOG_NPAR);      // Number of registers = 2^LOG_NPAR
+    localparam integer N_READONLY = 2;                // Number of read-only registers at the end (14 and 15 are read-only)
     localparam [1:0]   RESP_OK  = 2'b00;
-
 
     // ----------------------------
     // AXI write channel (tiny)
@@ -92,9 +93,10 @@ module iir2nd_direct_axi_wrap #(
     integer k;
     always @(posedge s_axi_aclk) begin
         if (!s_axi_aresetn) begin
-            for (k = 0; k < N_REGS; k = k + 1) regs[k] <= 32'd0;
+            // Only initialize writable registers to 0, leave readonly registers alone
+            for (k = 0; k < (N_REGS - N_READONLY); k = k + 1) regs[k] <= 32'd0;
         end else if (write_fire) begin
-            if (widx < N_REGS)
+            if (widx < (N_REGS - N_READONLY))  // Protect last N_READONLY registers from AXI writes
                 regs[widx] <= (regs[widx] & ~wmask32(s_axi_wstrb))
                             | (s_axi_wdata &  wmask32(s_axi_wstrb));
         end
@@ -135,15 +137,29 @@ module iir2nd_direct_axi_wrap #(
     // ---------------------------------------------------------
     // USER MAP BEGIN  (name your registers here)
     // ---------------------------------------------------------
-    // Example (direct-form):
-    wire signed [31:0] b0   = regs[0];  // +0x00
-    wire signed [31:0] b1   = regs[1];  // +0x04
-    wire signed [31:0] b2   = regs[2];  // +0x08
-    wire signed [31:0] a1   = regs[3];  // +0x0C
-    wire signed [31:0] a2   = regs[4];  // +0x10
-    wire signed [31:0] gain = regs[5];  // +0x14 (lower GAIN bits used)
-    wire        [31:0] control  = regs[6];  // +0x18  bit0 = soft reset
-
+    
+    // Control registers
+    wire signed [15:0] offset     = regs[0][15:0];  // +0x00
+    wire        [15:0] gain       = regs[1][15:0];  // +0x04
+    wire signed [15:0] band_low   = regs[2][15:0];  // +0x08
+    wire signed [15:0] band_high  = regs[3][15:0];  // +0x0C
+    wire        [31:0] control    = regs[4];        // +0x10 control bits
+    wire         [9:0] read_addr  = regs[5][9:0];   // +0x14 (histogram read address)
+    wire        [15:0] pulse_width = regs[6][15:0]; // +0x18 pulse width (in clk cycles)
+    
+    // Output registers (last N_READONLY registers are read-only)
+    wire        [31:0] read_data;                  // Histogram data from module
+    wire               overflow_flag;              // Histogram overflow flag (internal)
+    wire               data_ready;                 // Data ready flag (internal)
+    wire               clearing_active;            // Clearing in progress flag
+    
+    always @(posedge s_axi_aclk) begin
+        regs[14] <= read_data;               // Register 14: histogram data (same clock domain)
+        regs[15] <= {28'd0, clearing_active, overflow_flag, data_ready}; // Register 15: status
+        //           [31:3]  [2]             [1]           [0]
+        //           unused  clearing_active overflow      data_ready
+    end
+    
     // choose the filter clock/reset (simple: tie to AXI)
     wire fclk = s_axi_aclk;
     wire frst = ~s_axi_aresetn;  //AXI reset is active low, filter reset is active high
@@ -153,25 +169,31 @@ module iir2nd_direct_axi_wrap #(
     // USER INSTANTIATION BEGIN (drop your module here)
     // ---------------------------------------------------------
     // All module parameter VALUES are set right here (nowhere else).
-    iir2nd_direct #(
-        .IN_DATA_WIDTH  (32),
-        .OUT_DATA_WIDTH (16),
-        .DATA_WIDTH     (32),
-        .COEFF_WIDTH    (32),
-        .GAIN_WIDTH     (18)
-    ) u_filter (
-        .clk          (fclk),
-        .rst          (frst),
-        .x_in         (x_in),                 // 32-bit
-        .slow_clk     (slow_clk),
-        .b0           (b0[31:0]),        // module uses only COEFF_WIDTH LSBs
-        .b1           (b1[31:0]),
-        .b2           (b2[31:0]),
-        .a1           (a1[31:0]),
-        .a2           (a2[31:0]),
-        .gain_in      (gain[17:0]),      // lower 18 bits
-        .filter_reset (control[0]),
-        .y_out_reg    (y_out)                // change to .y_out if needed
+    peak_height_binning #(
+        .PEAK_DATA_WIDTH  (16),
+        .BIN_COUNT_WIDTH  (32),
+        .LOG_NBINS        (10),
+        .THRESHOLD_WIDTH  (16)
+    ) u_histogram (
+        .clk              (fclk),
+        .slow_clk         (slow_clk),
+        .rst              (frst),
+        .peak_detected    (peak_detected),
+        .peak_value_in    (peak_value_in),
+        .offset           (offset),
+        .gain             (gain),
+        .clear_bins       (control[0]),
+        .counting_enable  (control[1]),
+        .band_low         (band_low),
+        .band_high        (band_high),
+        .pulse_width      (pulse_width),
+        .filter_reset     (control[2]),
+        .read_addr        (read_addr),
+        .read_data        (read_data),
+        .band_detected    (band_detected),
+        .overflow_flag    (overflow_flag),
+        .total_bins       (),  // not used
+        .data_ready       (data_ready)
     );
 
 endmodule

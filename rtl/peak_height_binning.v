@@ -57,7 +57,8 @@ module peak_height_binning #(
     parameter BIN_COUNT_WIDTH = 32,    // Width of bin counters
     parameter LOG_NBINS = 10,          // log2(NUM_BINS) - 10 = 1024 bins
     parameter NUM_BINS = (1 << LOG_NBINS), // 2^LOG_NBINS bins
-    parameter THRESHOLD_WIDTH = 16     // Width of threshold values
+    parameter THRESHOLD_WIDTH = 16,    // Width of threshold values
+    parameter GAIN_WIDTH = 16          // Width of gain parameter
 )(
     input wire clk,                                           // System clock
     input wire slow_clk,                                      // Slow clock (available for future use)
@@ -67,11 +68,11 @@ module peak_height_binning #(
     
     // Binning configuration (gain/offset method)
     input wire signed [PEAK_DATA_WIDTH-1:0] offset,         // Baseline offset correction
-    input wire [PEAK_DATA_WIDTH-1:0] gain,                  // Gain multiplication factor
+    input wire [GAIN_WIDTH-1:0] gain,                       // Gain multiplication factor (unity = 2^LOG_UNITY)
     input wire clear_bins,                                   // Clear all bin counters
     input wire counting_enable,                              // Enable/disable counting (for readout)
     
-    // Energy band configuration  
+
     input wire signed [THRESHOLD_WIDTH-1:0] band_low,       // Energy band lower threshold
     input wire signed [THRESHOLD_WIDTH-1:0] band_high,      // Energy band upper threshold
     input wire [15:0] pulse_width,                           // Band detected pulse width (in clk cycles)
@@ -89,31 +90,58 @@ module peak_height_binning #(
     output reg data_ready                                    // Data ready flag
 );
 
+    // Fixed-point gain format: unity gain = 2^LOG_UNITY (e.g., 256 for 16-bit with LOG_UNITY=8)
+    localparam LOG_UNITY = GAIN_WIDTH / 2;  // 8 for 16-bit gain
+
     // Internal registers
     reg signed [PEAK_DATA_WIDTH-1:0] offset_reg;
-    reg [PEAK_DATA_WIDTH-1:0] gain_reg;
+    reg [GAIN_WIDTH-1:0] gain_reg;
     reg signed [THRESHOLD_WIDTH-1:0] band_low_reg, band_high_reg;
     reg [15:0] pulse_width_reg;
     reg signed [PEAK_DATA_WIDTH-1:0] peak_value_captured;  // Capture peak value on detection edge
     
+    // Pipeline registers for binning computation
+    // Input pipeline stage
+    reg peak_detected_input_reg;
+    reg signed [PEAK_DATA_WIDTH-1:0] peak_value_input_reg;
+    
+    // Processing pipeline stages  
+    reg peak_detected_reg;
+    reg signed [PEAK_DATA_WIDTH-1:0] peak_value_reg;
+    reg [PEAK_DATA_WIDTH+PEAK_DATA_WIDTH-1:0] peak_scaled_reg;  // Result of MAC operation
+    reg [LOG_NBINS-1:0] bin_index_reg;
+    reg band_match_reg;
+    
+    // BRAM pipeline stage
+    reg peak_detected_reg2;
+    reg [LOG_NBINS-1:0] bin_index_reg2;
+    reg band_match_reg2;
+    
+    // Additional BRAM timing stage
+    reg peak_detected_reg3;
+    reg [LOG_NBINS-1:0] bin_index_reg3;
+    reg band_match_reg3;
+    
+    // BRAM read pipeline stage
+    reg peak_detected_reg4;
+    reg [LOG_NBINS-1:0] bin_index_reg4;
+    reg [BIN_COUNT_WIDTH-1:0] bin_value_reg4;  // Value read from BRAM
+    
     // Internal signals for simplified binning
     wire [LOG_NBINS-1:0] bin_index;                          // LOG_NBINS bits for addressing
-    wire signed [PEAK_DATA_WIDTH-1:0] peak_corrected;       // After offset correction
-    wire [PEAK_DATA_WIDTH+PEAK_DATA_WIDTH-1:0] peak_scaled; // After gain multiplication
     wire band_match;
     
-    // Bin counter array (for easier manipulation)
-    reg [BIN_COUNT_WIDTH-1:0] bin_counters [0:NUM_BINS-1];
+    reg [BIN_COUNT_WIDTH-1:0] bin_counters [0:NUM_BINS-1]; // Bin counter array (for easier manipulation)
+    reg [15:0] pulse_timer;
+    reg band_detected_active;
     
-    // Readout pipeline registers with synchronizer for read_addr
-    reg [LOG_NBINS-1:0] read_addr_sync1, read_addr_sync2; // 2-stage synchronizer
-    reg [LOG_NBINS-1:0] read_addr_reg;
+
 
     // Pipeline for parameter registers
     always @(posedge clk) begin
         if (rst || filter_reset) begin
             offset_reg <= 0;
-            gain_reg <= 1;  // Default gain = 1 (no scaling)
+            gain_reg <= (1 << LOG_UNITY);  // Default gain = 1.0 (unity = 2^LOG_UNITY = 256)
             band_low_reg <= 0;
             band_high_reg <= 0;
             pulse_width_reg <= 16'd125;  // Default: 1µs at 125MHz (125 cycles)
@@ -126,28 +154,98 @@ module peak_height_binning #(
         end
     end
 
-    // Simplified binning logic using gain/offset and bit selection
-    assign peak_corrected = peak_value_in + offset_reg;      // Apply offset correction
-    assign peak_scaled = peak_corrected * gain_reg;          // Apply gain multiplication
-    
-    // Extract LOG_NBINS bits as bin index - use lower bits for small peak values  
-    wire [LOG_NBINS-1:0] bin_index_raw = peak_scaled[LOG_NBINS-1:0];  // Use lower 10 bits directly
-    assign bin_index = (bin_index_raw >= NUM_BINS) ? (NUM_BINS-1) : bin_index_raw;  // Clamp to valid range
+    // Input pipeline stage: Register inputs for timing closure
+    always @(posedge clk) begin
+        if (rst || filter_reset) begin
+            peak_detected_input_reg <= 0;
+            peak_value_input_reg <= 0;
+        end else begin
+            peak_detected_input_reg <= peak_detected;
+            peak_value_input_reg <= peak_value_in;
+        end
+    end
 
-    // Energy band detection logic
-    assign band_match = (peak_value_in >= band_low_reg) && (peak_value_in <= band_high_reg);
+    // Combinatorial binning logic (using pipelined inputs)
+    assign band_match = (peak_value_input_reg >= band_low_reg) && (peak_value_input_reg <= band_high_reg);
+
+    // Pipeline stage 1: MAC operation (gain * peak_value + offset) in single DSP
+    always @(posedge clk) begin
+        if (rst || filter_reset) begin
+            peak_detected_reg <= 0;
+            peak_value_reg <= 0;
+            peak_scaled_reg <= 0;
+            band_match_reg <= 0;
+        end else begin
+            peak_detected_reg <= peak_detected_input_reg;
+            peak_value_reg <= peak_value_input_reg;
+            // MAC with fixed-point gain: (peak * gain) >> LOG_UNITY + offset
+            peak_scaled_reg <= ((peak_value_input_reg * gain_reg) >>> LOG_UNITY) + offset_reg;
+            band_match_reg <= band_match;
+        end
+    end
+
+    // Combinatorial logic for pipeline stage 2 (uses registered values)
+    // Saturate bin index: clamp to [0, NUM_BINS-1] range
+    assign bin_index = (peak_scaled_reg[PEAK_DATA_WIDTH+PEAK_DATA_WIDTH-1]) ? {LOG_NBINS{1'b0}} :     // If negative (MSB=1), saturate to 0
+                       (peak_scaled_reg[LOG_NBINS-1:0] >= NUM_BINS) ? (NUM_BINS-1) :                                    // If >= NUM_BINS, saturate to max
+                       peak_scaled_reg[LOG_NBINS-1:0];                                                                   // Otherwise use raw value
     
-    // Pulse width timer for band_detected output
-    reg [15:0] pulse_timer;
-    reg band_detected_active;
+
+    // Pipeline stage 2: Bin index calculation
+    always @(posedge clk) begin
+        if (rst || filter_reset) begin
+            bin_index_reg <= 0;
+        end else begin
+            bin_index_reg <= bin_index;
+        end
+    end
+
+    // Pipeline stage 3: BRAM access pipeline
+    always @(posedge clk) begin
+        if (rst || filter_reset) begin
+            peak_detected_reg2 <= 0;
+            bin_index_reg2 <= 0;
+            band_match_reg2 <= 0;
+        end else begin
+            peak_detected_reg2 <= peak_detected_reg;
+            bin_index_reg2 <= bin_index_reg;
+            band_match_reg2 <= band_match_reg;
+        end
+    end
+
+    // Pipeline stage 4: Additional BRAM timing stage
+    always @(posedge clk) begin
+        if (rst || filter_reset) begin
+            peak_detected_reg3 <= 0;
+            bin_index_reg3 <= 0;
+            band_match_reg3 <= 0;
+        end else begin
+            peak_detected_reg3 <= peak_detected_reg2;
+            bin_index_reg3 <= bin_index_reg2;
+            band_match_reg3 <= band_match_reg2;
+        end
+    end
     
-    // Pulse timer control logic
+    // Pipeline stage 5: BRAM read stage (separates read from write)
+    always @(posedge clk) begin
+        if (rst || filter_reset) begin
+            peak_detected_reg4 <= 0;
+            bin_index_reg4 <= 0;
+            bin_value_reg4 <= 0;
+        end else begin
+            peak_detected_reg4 <= peak_detected_reg3;
+            bin_index_reg4 <= bin_index_reg3;
+            bin_value_reg4 <= bin_counters[bin_index_reg3];  // Read in separate stage
+        end
+    end
+    
+    // Pulse timer control logic  
     always @(posedge clk) begin
         if (rst || filter_reset) begin
             pulse_timer <= 0;
             band_detected_active <= 0;
-        end else if (peak_detected && band_match) begin
-            // Start new pulse (extend if already active)
+        end else if (peak_detected_reg4 && band_match_reg3) begin
+            // Start new pulse - using stage 5 pipelined signals
             pulse_timer <= pulse_width_reg;
             band_detected_active <= 1;
         end else if (band_detected_active && pulse_timer > 0) begin
@@ -162,8 +260,21 @@ module peak_height_binning #(
     // Output filtered peak detection pulse scaled for signed DAC output
     assign band_detected = band_detected_active ? 14'h1FFF : 14'h0000;  // 0 or 2^13-1 (8191)
 
-    // BRAM-friendly histogram counter with proper initialization
-    // This will synthesize to Block RAM instead of registers, and stes the to 0.
+    // Clear counter for sequential clearing
+    reg [LOG_NBINS-1:0] clear_counter;
+    reg clearing_active;
+    
+    // BRAM-friendly memory with separate read/write ports and registered addresses
+    // Force BRAM inference with (* ram_style = "block" *)
+    (* ram_style = "block" *) reg [BIN_COUNT_WIDTH-1:0] bin_counters [0:NUM_BINS-1];
+    
+    // Registered addresses for BRAM inference
+    reg [LOG_NBINS-1:0] write_addr_reg;
+    reg [LOG_NBINS-1:0] read_addr_reg;
+    reg write_enable_reg;
+    reg [BIN_COUNT_WIDTH-1:0] write_data_reg;
+    
+    // Initialize memory to zero (for simulation)
     integer j;
     initial begin
         for (j = 0; j < NUM_BINS; j = j + 1) begin
@@ -171,10 +282,25 @@ module peak_height_binning #(
         end
     end
     
-    // Clear counter for sequential clearing. Otherwise it would try to clear all in parrallel, which is not feasible.
-    reg [LOG_NBINS-1:0] clear_counter;
-    reg clearing_active;
+    // BRAM Write Port (Port A) - with registered address and data
+    always @(posedge clk) begin
+        if (write_enable_reg) begin
+            bin_counters[write_addr_reg] <= write_data_reg;
+        end
+    end
     
+    // BRAM Read Port (Port B) - with registered address  
+    always @(posedge clk) begin
+        if (rst || filter_reset) begin
+            read_addr_reg <= 0;
+            read_data <= 0;
+        end else begin
+            read_addr_reg <= read_addr;
+            read_data <= bin_counters[read_addr_reg];
+        end
+    end
+    
+    // Write control logic - generates registered write signals
     always @(posedge clk) begin
         if (rst || filter_reset) begin
             overflow_flag <= 0;
@@ -182,44 +308,38 @@ module peak_height_binning #(
             total_bins <= NUM_BINS;
             clear_counter <= 0;
             clearing_active <= 1;  // Start clearing on reset
+            write_addr_reg <= 0;
+            write_data_reg <= 0;
+            write_enable_reg <= 0;
         end else if (clear_bins && !clearing_active) begin
             // Start sequential clear when clear_bins asserted
             clear_counter <= 0;
             clearing_active <= 1;
+            write_enable_reg <= 0;
         end else if (clearing_active) begin
             // Sequential clearing - one bin per clock
-            bin_counters[clear_counter] <= 0;
+            write_addr_reg <= clear_counter;
+            write_data_reg <= 0;
+            write_enable_reg <= 1;
             if (clear_counter == NUM_BINS - 1) begin
                 clearing_active <= 0;  // Done clearing
+                write_enable_reg <= 0;
             end else begin
                 clear_counter <= clear_counter + 1;
             end
-        end else if (peak_detected && counting_enable) begin
-            // Normal operation - increment histogram bin
-            if (bin_counters[bin_index] == {BIN_COUNT_WIDTH{1'b1}}) begin
+        end else if (peak_detected_reg4 && counting_enable) begin
+            // Normal operation - increment histogram bin (using pre-read value)
+            write_addr_reg <= bin_index_reg4;
+            if (bin_value_reg4 == {BIN_COUNT_WIDTH{1'b1}}) begin
                 overflow_flag <= 1;  // Set overflow flag if counter saturated
+                write_enable_reg <= 0;  // Don't write if saturated
             end else begin
-                bin_counters[bin_index] <= bin_counters[bin_index] + 1;
+                write_data_reg <= bin_value_reg4 + 1;  // Use pre-read value
+                write_enable_reg <= 1;
             end  
             data_ready <= 1;
-        end
-    end
-
-    // Memory readout interface - simple read (no clock crossing)
-    always @(posedge clk) begin
-        if (rst || filter_reset) begin
-            read_addr_sync1 <= 0;
-            read_addr_sync2 <= 0;
-            read_addr_reg <= 0;
-            read_data <= 0;
         end else begin
-            // Simple pipeline (no synchronizer needed - same clock domain)
-            read_addr_sync1 <= read_addr;
-            read_addr_sync2 <= read_addr_sync1;
-            
-            // Read from memory
-            read_addr_reg <= read_addr_sync2;
-            read_data <= bin_counters[read_addr_reg];
+            write_enable_reg <= 0;
         end
     end
     

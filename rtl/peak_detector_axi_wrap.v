@@ -39,7 +39,7 @@ module peak_detector_axi_wrap #(
     // ---------------------------------------------------------
     input  wire                              slow_clk,      // Sample clock enable
     input  wire  signed [15:0]               x_in,          // ADC sample input
-    output wire                              peak_detected, // Peak detection pulse
+    output wire                              peak_detected_out, // Peak detection pulse
     output wire  signed [15:0]               peak_value_out,  // Selected output (integration or max)
     output wire  signed [15:0]               peak_integral_out, // Integration accumulator result
     output wire  signed [15:0]               peak_max_out,    // Maximum value detected
@@ -190,7 +190,7 @@ module peak_detector_axi_wrap #(
         .integration_mode  (control_reg[2]),             // Control bit 2: integration mode
         .invert_input      (control_reg[1]),             // Control bit 1: polarity inversion
         .filter_reset      (control_reg[0]),             // Control bit 0: filter reset
-        .peak_detected     (peak_detected),              // Output wire
+        .peak_detected_out (peak_detected_out),              // Output wire
         .peak_value_out    (peak_value_out),             // Selected output wire
         .peak_integral_out (peak_integral_out),          // Integration output wire
         .peak_max_out      (peak_max_out),               // Max value output wire

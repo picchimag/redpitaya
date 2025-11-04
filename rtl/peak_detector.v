@@ -51,7 +51,7 @@ module peak_detector #(
     input wire integration_mode,                          // 0=max tracking, 1=integration
     input wire invert_input,                              // Invert input polarity (0=positive peaks, 1=negative peaks)
     input wire filter_reset,                              // Filter reset control
-    output reg peak_detected,                             // Peak detection pulse
+    output reg peak_detected_out,                             // Peak detection pulse
     output reg signed [DATA_WIDTH-1:0] peak_value_out,     // Selected output (integration or max based on mode)
     output reg signed [DATA_WIDTH-1:0] peak_integral_out,  // Integration accumulator output (always available)
     output reg signed [DATA_WIDTH-1:0] peak_max_out,       // Maximum value detected in window (always available)
@@ -78,21 +78,20 @@ module peak_detector #(
     reg [3:0] log_attenuation_reg;                       // Bit shift for output scaling
     reg integration_mode_reg;                            // 0=max tracking, 1=integration
     reg invert_input_reg;                                 // Polarity inversion control
-    
-    // For max tracking (always enabled)
     reg signed [DATA_WIDTH-1:0] peak_max;
     reg [COUNTER_WIDTH-1:0] max_delay_reg;               // Delay at which max was found
-    
-    // Wide accumulator for integration - properly sized from the start
     reg signed [INTEGRATION_WIDTH-1:0] peak_integral;
     
-    // Polarity-adjusted input signal (always positive-going)
-    wire signed [DATA_WIDTH-1:0] x_pos;
+    // Pipeline registers for outputs (updated by slow_clk domain)
+    reg peak_detected_pipe;
+    reg signed [DATA_WIDTH-1:0] peak_value_pipe;         // Selected output (integration or max based on mode)
+    reg signed [DATA_WIDTH-1:0] peak_integral_pipe;      // Integration accumulator output (always available)
+    reg signed [DATA_WIDTH-1:0] peak_max_pipe;           // Maximum value detected in window (always available)
 
-
-
+    
     // Polarity inversion: invert input for negative peak detection
     // value = condition ? value_if_true : value_if_false
+    wire signed [DATA_WIDTH-1:0] x_pos;
     assign x_pos = invert_input_reg ? -x_in : x_in;
 
     // Pipeline for parameter registers
@@ -118,7 +117,7 @@ module peak_detector #(
         end
     end
 
-    // Pipeline input sample - only update when slow clock is active
+    // Input sample pipeline (slow_clk domain)
     always @(posedge clk) begin
         if (rst || filter_reset) begin
             x_reg <= 0;
@@ -131,19 +130,19 @@ module peak_detector #(
     always @(posedge clk) begin
         if (rst || filter_reset) begin
             state <= IDLE;
-            peak_value_out <= 0;
-            peak_integral_out <= 0;
-            peak_max_out <= 0;
+            peak_value_pipe <= 0;
+            peak_integral_pipe <= 0;
+            peak_max_pipe <= 0;
+            peak_detected_pipe <= 0;
             peak_integral <= 0;
             peak_max <= 0;
             max_delay_reg <= 0;
             max_delay <= 0;
             dead_cnt <= 0;
             integration_cnt <= 0;
-            peak_detected <= 0;
             state_out <= IDLE;
         end else if (slow_clk) begin
-            peak_detected <= 0;  // Default: no peak detected
+            peak_detected_pipe <= 0;  // Default: no peak detected
             state_out <= state;  // Output current state for debugging
             
             case (state)
@@ -175,19 +174,19 @@ module peak_detector #(
                 end
                 
                 HOLD: begin
-                    peak_detected <= 1;  // Signal peak is ready
+                    peak_detected_pipe <= 1;  // Signal peak is ready
                     dead_cnt <= dead_time_reg;  // Load dead time
                     max_delay <= max_delay_reg;  // Output the delay at which max was found
                     
-                    // Always output both values with attenuation
-                    peak_integral_out <= peak_integral >>> log_attenuation_reg;  // Integration result
-                    peak_max_out <= peak_max >>> log_attenuation_reg;            // Max tracking result
+                    // Always output both values with attenuation to pipeline registers
+                    peak_integral_pipe <= peak_integral >>> log_attenuation_reg;  // Integration result
+                    peak_max_pipe <= peak_max >>> log_attenuation_reg;            // Max tracking result
                     
-                    // Select which one goes to peak_value_out based on mode
+                    // Select which one goes to peak_value_pipe based on mode
                     if (integration_mode_reg) begin
-                        peak_value_out <= peak_integral >>> log_attenuation_reg;  // Integration mode
+                        peak_value_pipe <= peak_integral >>> log_attenuation_reg;  // Integration mode
                     end else begin
-                        peak_value_out <= peak_max >>> log_attenuation_reg;       // Max tracking mode
+                        peak_value_pipe <= peak_max >>> log_attenuation_reg;       // Max tracking mode
                     end
                     state <= DEAD;
                 end
@@ -208,5 +207,24 @@ module peak_detector #(
             endcase
         end
     end
+
+
+    // Output pipeline stage - runs on full clk rate for timing closure
+    always @(posedge clk) begin
+        if (rst || filter_reset) begin
+            // Reset all outputs
+            peak_detected_out <= 0;
+            peak_value_out <= 0;
+            peak_integral_out <= 0;
+            peak_max_out <= 0;
+        end else begin
+            // Pipeline the outputs - this breaks the slow_clk timing dependency
+            peak_detected_out <= peak_detected_pipe;
+            peak_value_out <= peak_value_pipe;
+            peak_integral_out <= peak_integral_pipe;
+            peak_max_out <= peak_max_pipe;
+        end
+    end 
+
     
 endmodule

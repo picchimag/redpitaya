@@ -1,42 +1,38 @@
-# Development Tasks
 
-## MCA (Multi-Channel Analyzer) Tasks
 
-### **HIGHEST PRIORITY - Timing Issue Root Cause**
-- [ ] **CRITICAL: Timing issue is NOT in peak_detector, but in binning module!**
-  - [ ] Vivado timing report blames `peak_value_out` register in peak_detector
-  - [ ] However: compiling with NO binning module and `peak_value_out` connected directly to DAC works perfectly with good timing
-  - [ ] **Root cause is likely at binning module input interface**
-  - [ ] Consider adding input buffer/pipeline stage at binning module input
-  - [ ] May need to add register stage for `peak_value_in` or `peak_valid_in` signals
-  - [ ] Investigate if combinatorial path from peak_detector output through binning module is the actual critical path
+## Live streaming
 
-### High Priority - Peak Height Binning
-- [ ] Modify gain format in `peak_height_binning.v`:
-  - [ ] Add parameter `GAIN_WIDTH = 16`
-  - [ ] Add parameter `LOG_UNITY_GAIN = GAIN_WIDTH/2` (=8, so unity gain = 256 = 0x0100)
-  - [ ] Allow gain range from 0 to 255 (with unity at 256)
-  - [ ] After multiplication, select bits `[DATA_WIDTH+LOG_UNITY_GAIN -1: LOG_UNITY_GAIN]`
-  - [ ] Add pipeline stage for multiplication to improve timing
+### Verilog module
 
-### High Priority - Peak Detector
-- [ ] Investigate timing issues in `peak_detector.v`
-- [ ] Consider adding fixed shift for integral attenuation to help timing
-- [ ] Evaluate if barrel shifter is causing timing problems
-
-### Medium Priority
-- [ ] Test MCA histogram accumulation and readout
-- [ ] Verify gain scaling with different test signals
 - [ ] Optimize BRAM access timing
+- [ ] use dma for faster stream
 
-## Python Interface To-Do List
+### Python Interface To-Do List
 
-### High Priority
-### MED Priority
 - [ ] Script to read timetraces when works in hardware
+- [x] CDMA-based fast acquisition working (8-9 Hz with live plot, 21 Hz raw)
+- [ ] Create optimized redpitaya_base functions:
+  - [ ] `read_cdma_frame`: Arm capture, smart wait (only if acquisition_time > 1ms), CDMA transfer via base64/SSH, return data
+  - [ ] `setup_cdma(sampling_frequency, frame_len, n_of_frames)`: Configure CDMA once, calculate/return actual sampling freq & frame time based on log_div quantization
+- [ ] make little app that plots live timetrace and spectrum, allows setting of scale, sampling rate, averaging...
+  - [ ] Enhanced live plot with PSD:
+    - Top: 4-channel time-domain (with matplotlib blitting for speed)
+    - Bottom: Power Spectral Density with averaging over N frames
+    - Controls: averaging window, frequency zoom, save data/screenshots
+  - [ ] Simple GUI app:
+    - Start/Stop acquisition, sampling frequency selector, frame length selector
+    - Live plot display (time + PSD), frame rate indicator
+    - Save configuration/data options
+    - Consider tkinter (simple) or PyQt (more features)
 
-### Low Priority
-- [ ] Create a GUI for filter configuration
-- [ ] Add example Jupyter notebook for interactive filter design and testing
-- [ ] Add real-time plotting of filter response
-- [ ] Add support for multiple Red Pitaya devices
+
+
+## Noise performance improvement
+
+### Verilog Module
+ - [ ] make CIC decimator (3rd order, LOG_DIV)
+ - [ ] make CIC interpolator
+
+
+  
+PS C:\Users\magrini\Documents\programming\redpitaya> git commit -m "Added mca, works; Added sreaming functionality through dma on feedbacks, works; fixe saturation of filers and pid outputs, now works (as long as the internal state does not saturate!); restructured the python module, now its installable, "

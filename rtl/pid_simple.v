@@ -184,11 +184,15 @@ module pid_simple #(
     assign y_gain = y_shift * gain_in;
     assign y_scaled = y_gain >>> (LOG_UNITY_GAIN + DATA_SHIFT_OUT);
     
+    // Saturate at ADC_DATA_WIDTH (14-bit) range before truncation
+    // Create intermediate shifted value that we can properly compare
+    wire signed [GAIN_DATA_WIDTH+GAIN_WIDTH-1:0] y_shifted_sat;
+    assign y_shifted_sat = y_scaled;
 
-    // Final output saturation (protect from sign flipping)
-    assign y_out = (y_scaled > {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}}) ? {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}} :  // Positive saturation
-                   (y_scaled < {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}}) ? {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}} :  // Negative saturation  
-                   y_scaled[OUT_DATA_WIDTH-1:0];  // Normal case
+    // Final output saturation at ADC range
+    assign y_out = (y_shifted_sat > $signed((1 << (ADC_DATA_WIDTH-1)) - 1)) ? $signed((1 << (ADC_DATA_WIDTH-1)) - 1) :
+                   (y_shifted_sat < $signed(-(1 << (ADC_DATA_WIDTH-1)))) ? $signed(-(1 << (ADC_DATA_WIDTH-1))) :
+                   y_scaled[OUT_DATA_WIDTH-1:0];
 
 
     // Registered output on slow tick

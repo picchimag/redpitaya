@@ -78,12 +78,12 @@ module iir2nd_coupled #(
     // Intermediate computation wires - grouped by function
     wire signed [STATE_WIDTH + COEFF_WIDTH-1:0] alpha_u, beta_v, alpha_v, beta_u; // Multiplication products
     wire signed [STATE_WIDTH-1:0] alpha_u_scaled, beta_v_scaled, alpha_v_scaled, beta_u_scaled; // Scaled products
-    wire signed [STATE_WIDTH-1:0] u_new, v_new; // New state values with extra bits
+    wire signed [STATE_WIDTH:0] u_new, v_new; // New state values - NEED +1 bit to detect overflow before saturation
     wire signed [STATE_WIDTH-1:0] x0_extended; // Sign-extended input
     wire signed [STATE_WIDTH + COEFF_WIDTH-1:0] u_gain, v_gain; // Output gain products
     wire signed [STATE_WIDTH-1:0] u_scaled_full, v_scaled_full; // Scaled gain products
     wire signed [STATE_WIDTH:0] uv_sum; // Combined I/Q output
-    wire signed [STATE_WIDTH:0] uv_scaled; // Scaled for output width
+    wire signed [OUT_DATA_WIDTH-1:0] uv_scaled; // Scaled for output width - MUST be OUT_DATA_WIDTH for saturation to work
     wire signed [OUT_DATA_WIDTH-1:0] y_out; // Final output with saturation
 
     // GPIO controls - use counter as both sync and hold timer
@@ -184,14 +184,21 @@ module iir2nd_coupled #(
     assign u_scaled_full = u_gain >>> LOG_UNITY_GAIN;
     assign v_scaled_full = v_gain >>> LOG_UNITY_GAIN;
     
-    // Combine I and Q channels and scale to output width with saturation
+    // Combine I and Q channels - result is STATE_WIDTH+1 bits
     assign uv_sum = u_scaled_full + v_scaled_full;
     
-    // Simple saturation applied directly to scaled result
-    assign uv_scaled = uv_sum >>> (STATE_WIDTH - OUT_DATA_WIDTH);
-    assign y_out = (uv_scaled > {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}}) ? {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}} :  // Positive saturation
-                   (uv_scaled < {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}}) ? {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}} :  // Negative saturation  
-                   uv_scaled[OUT_DATA_WIDTH-1:0];  // Normal case
+    // Scale down AND saturate at the same time
+    // First compute the shifted value, then saturate it
+    wire signed [STATE_WIDTH:0] uv_shifted;
+    assign uv_shifted = uv_sum >>> (STATE_WIDTH - OUT_DATA_WIDTH);
+    
+    // Saturate at ADC_DATA_WIDTH (14-bit) range, since DAC only uses lower 14 bits
+    assign uv_scaled = (uv_shifted > $signed((1 << (ADC_DATA_WIDTH-1)) - 1)) ? $signed((1 << (ADC_DATA_WIDTH-1)) - 1) :
+                       (uv_shifted < $signed(-(1 << (ADC_DATA_WIDTH-1)))) ? $signed(-(1 << (ADC_DATA_WIDTH-1))) :
+                       uv_shifted[OUT_DATA_WIDTH-1:0];
+    
+    // Output is already saturated
+    assign y_out = uv_scaled;
     
     // Output register - maintains value for DAC between filter updates
     always @(posedge clk) begin
@@ -203,3 +210,10 @@ module iir2nd_coupled #(
     end
 
 endmodule
+
+
+
+
+ //   assign y_out = (uv_scaled > $signed((1 << (OUT_DATA_WIDTH-1)) - 1)) ? $signed((1 << (OUT_DATA_WIDTH-1)) - 1) :  // Max positive (e.g., +32767)
+ //                  (uv_scaled < $signed(-(1 << (OUT_DATA_WIDTH-1)))) ? $signed(-(1 << (OUT_DATA_WIDTH-1))) :  // Max negative (e.g., -32768)
+//                   uv_scaled[OUT_DATA_WIDTH-1:0];  // Normal case

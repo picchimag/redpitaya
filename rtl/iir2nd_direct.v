@@ -167,9 +167,15 @@ module iir2nd_direct #(
     assign y_shift = y >>> (DATA_WIDTH - GAIN_DATA_WIDTH);
     assign y_gain  = y_shift * gain_reg;     //25*18
     assign y_scaled = y_gain >>> (LOG_UNITY_GAIN+DATA_SHIFT_OUT);
-    assign y_out = (y_scaled > {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}}) ? {1'b0, {(OUT_DATA_WIDTH-1){1'b1}}} :  // Positive saturation
-                   (y_scaled < {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}}) ? {1'b1, {(OUT_DATA_WIDTH-1){1'b0}}} :  // Negative saturation  
-                   y_scaled[OUT_DATA_WIDTH-1:0];  // Normal case
+    
+    // Saturate at ADC_DATA_WIDTH (14-bit) range before truncation
+    // Create intermediate shifted value that we can properly compare
+    wire signed [GAIN_DATA_WIDTH+GAIN_WIDTH-1:0] y_shifted_sat;
+    assign y_shifted_sat = y_scaled;
+    
+    assign y_out = (y_shifted_sat > $signed((1 << (ADC_DATA_WIDTH-1)) - 1)) ? $signed((1 << (ADC_DATA_WIDTH-1)) - 1) :
+                   (y_shifted_sat < $signed(-(1 << (ADC_DATA_WIDTH-1)))) ? $signed(-(1 << (ADC_DATA_WIDTH-1))) :
+                   y_scaled[OUT_DATA_WIDTH-1:0];
 
    
     // output register - only update when new pipeline result is available  

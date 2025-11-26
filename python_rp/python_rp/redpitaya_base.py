@@ -24,7 +24,7 @@ class redpitaya_base:
             self.ssh = None
 
     # --- bitfile programming ---
-    def load_bitfile(self, remote='/root/bit.bin'):
+    def load_bitfile(self, remote='/root/fpga.bit'):
         sftp = self.ssh.open_sftp()
         sftp.put(self.bitfile, remote)
         sftp.close()

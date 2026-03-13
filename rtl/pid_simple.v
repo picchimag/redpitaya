@@ -21,12 +21,10 @@
  * @param OUT_DATA_WIDTH   Output width for DAC/stream (default 16)
  * @param DATA_WIDTH       Internal datapath width (default 32)
  * @param COEFF_WIDTH      Coefficient width (default 32, Q1.(COEFF_WIDTH-1))
- * @param GAIN_DATA_WIDTH  Width used before final gain multiply (25 by default)
- * @param GAIN_WIDTH       Width of external scalar gain_in (18 like your IIR)
  *
  * Scaling:
- *   Each product (K*arg) is shifted by LOG_A0 = COEFF_WIDTH-2 (≈Q1.31 → 31),
- *   then summed. Final y is downshifted and scaled by gain_in like iir2nd_direct.
+ *   Each product (K*arg) is shifted by LOG_A0 = COEFF_WIDTH/2,
+ *   then summed. Final y is downshifted to 14-bit ADC range.
  */
 
 `timescale 1 ns / 1 ps
@@ -35,11 +33,10 @@ module pid_simple #(
     parameter IN_DATA_WIDTH   = 32,
     parameter OUT_DATA_WIDTH  = 16,
     parameter DATA_WIDTH      = 32,
-    parameter INTEGRATOR_WIDTH    = 56, // wider to avoid overflow in integrator
+    parameter INTEGRATOR_WIDTH = 56, // wider to avoid overflow in integrator
     parameter COEFF_WIDTH     = 32,
     parameter ALPHA_WIDTH     = 18,
-    parameter GAIN_DATA_WIDTH = 25,
-    parameter GAIN_WIDTH      = 18
+    parameter LOG_A0_INTEGRATOR = 20
 )(
     input  wire                         clk,
     input  wire                         rst,          // active high
@@ -51,7 +48,6 @@ module pid_simple #(
     input  wire signed [COEFF_WIDTH-1:0]    Ki,
     input  wire signed [COEFF_WIDTH-1:0]    Kd,
     input  wire signed [ALPHA_WIDTH-1:0]  alpha_d,   // 0..1 in Q1.(COEFF_WIDTH-1), LP for derivative
-    input  wire signed [GAIN_WIDTH-1:0]     gain_in,   // same usage as iir2nd_direct
     // resets
     input  wire                         filter_reset, // staged reset (same pattern as your filters)
     input  wire                         i_reset,      // **integrator-only** reset (1 → zero I state on next slow tick)
@@ -62,8 +58,6 @@ module pid_simple #(
     localparam LOG_A0           = COEFF_WIDTH/2;
     localparam ADC_DATA_WIDTH   = 14;
     localparam DATA_SHIFT_IN    = IN_DATA_WIDTH - DATA_WIDTH;
-    localparam DATA_SHIFT_OUT   = GAIN_DATA_WIDTH - ADC_DATA_WIDTH;
-    localparam LOG_UNITY_GAIN   = GAIN_WIDTH/2;
 
     // ------------------------
     // Synchronized reset hold
@@ -89,12 +83,17 @@ module pid_simple #(
     // ------------------------
     reg signed [DATA_WIDTH-1:0] e0;          // current error
     reg signed [DATA_WIDTH-1:0] e1;          // previous error (for derivative)
-    reg signed [INTEGRATOR_WIDTH-1:0] i_acc; // integrator accumulator
+    reg signed [INTEGRATOR_WIDTH-1:0] i_acc_sat; // saturated integrator accumulator
+    reg signed [INTEGRATOR_WIDTH:0] i_acc_wide; // integrator accumulator with one extra bit for saturation detection
     reg signed [DATA_WIDTH-1:0] d_filt;      // filtered derivative
 
     // ------------------------
     // Intermediate computation wires - grouped by function
     // ------------------------
+    // Integrator computation wires
+    wire signed [INTEGRATOR_WIDTH:0] i_acc;                   // Next integrator value with overflow detection
+    wire signed [INTEGRATOR_WIDTH:0] i_acc_antiwindup;        // Anti-windup adjusted wide accumulator value
+    
     // Derivative computation wires
     wire signed [DATA_WIDTH-1:0] d_arg;                        // Derivative argument (e0 - e1)
     wire signed [COEFF_WIDTH-1:0] one_q;                       // Unity in Q format
@@ -104,6 +103,7 @@ module pid_simple #(
     // PID term computation wires
     wire signed [DATA_WIDTH+COEFF_WIDTH-1:0] Pprod;           // P term product
     wire signed [INTEGRATOR_WIDTH+COEFF_WIDTH-1:0] Iprod;     // I term product  
+    wire signed [INTEGRATOR_WIDTH+COEFF_WIDTH-LOG_A0_INTEGRATOR-1:0] Iterm_wide; // I term after scaling, before saturation
     wire signed [DATA_WIDTH+COEFF_WIDTH-1:0] Dprod;           // D term product
     wire signed [DATA_WIDTH-1:0] Pterm, Iterm, Dterm;         // Scaled PID terms
     
@@ -112,11 +112,10 @@ module pid_simple #(
     wire signed [DATA_WIDTH+2:0] y_sum_w;                     // Wide sum
     wire signed [DATA_WIDTH-1:0] y_sum;                       // Truncated sum
     
-    // Output scaling and saturation wires
-    wire signed [GAIN_DATA_WIDTH-1:0] y_shift;                // Gain input scaling
-    wire signed [GAIN_DATA_WIDTH+GAIN_WIDTH-1:0] y_gain;      // Gain product
-    wire signed [GAIN_DATA_WIDTH+GAIN_WIDTH-1:0] y_scaled;    // Scaled for output
+    // Output wire
     wire signed [OUT_DATA_WIDTH-1:0] y_out;                   // Final output with saturation
+
+   
 
     // Input processing - scale and pipeline
     // Note: i_acc and d_filt already declared above in the registers section
@@ -131,16 +130,17 @@ module pid_simple #(
     end
 
 
-    // Delay line & integrator (advance only on slow tick)
+    // Integrator registers - simplified logic
     always @(posedge clk) begin
-        if (rst_sync) begin
-            e1   <= 0;
-            i_acc<= 0;
+        if (rst_sync || i_reset) begin
+            e1         <= 0;
+            i_acc_sat  <= 0;
+            i_acc_wide <= 0;
         end else if (slow_clk) begin
             e1 <= e0;
-            // Integrator reset takes effect on the sample boundary
-            if (i_reset) i_acc <= 0;
-            else         i_acc <= i_acc + e0;
+            // Simple integrator: just accumulate e0 into i_acc_wide
+            i_acc_wide <= i_acc_wide + e0;
+            i_acc_sat <= i_acc_wide + e0;  // For now, no saturation
         end
     end
 
@@ -163,13 +163,20 @@ module pid_simple #(
 
     // PID term computation
     assign Pprod = e0 * Kp;
-    assign Iprod = i_acc * Ki;
+    assign Iprod = i_acc_sat * Ki;
     assign Dprod = d_filt * Kd;
 
-    // Scale each product by LOG_A0, then take DATA_WIDTH
+    
+    // add saturation of Iterm_wide.. it will be reducting from INTEGRATOR_WIDTH+COEFF_WIDTH-LOGA0_INTEGRATOR down to DATA_WIDTH, so we can check for overflow before truncation
+    assign Iterm_wide = Iprod >>> LOG_A0_INTEGRATOR;
+    assign Iterm = (Iterm_wide > $signed((1 << (DATA_WIDTH-1)) - 1)) ? $signed((1 << (DATA_WIDTH-1)) - 1) :
+                   (Iterm_wide < $signed(-(1 << (DATA_WIDTH-1)))) ? $signed(-(1 << (DATA_WIDTH-1))) :
+                   Iterm_wide[DATA_WIDTH-1:0];
+
+    // Scale each product by LOG_A0, then take DATA_WIDTH, these dont saturate because max gain is equal to bitshift!
     assign Pterm = Pprod >>> LOG_A0;
-    assign Iterm = Iprod >>> LOG_A0;
     assign Dterm = Dprod >>> LOG_A0;
+
 
     // Widen BEFORE adding to avoid wrap
     assign P_w = {{2{Pterm[DATA_WIDTH-1]}}, Pterm};
@@ -177,21 +184,17 @@ module pid_simple #(
     assign D_w = {{2{Dterm[DATA_WIDTH-1]}}, Dterm};
 
     assign y_sum_w = $signed(P_w) + $signed(I_w) + $signed(D_w);
-    assign y_sum = y_sum_w[DATA_WIDTH-1:0];   // (optional: saturate here)
+    assign y_sum = (y_sum_w > $signed((1 << (DATA_WIDTH-1)) - 1)) ? $signed((1 << (DATA_WIDTH-1)) - 1) :
+                   (y_sum_w < $signed(-(1 << (DATA_WIDTH-1)))) ? $signed(-(1 << (DATA_WIDTH-1))) :
+                   y_sum_w[DATA_WIDTH-1:0];
 
-    // Gain & output scaling with saturation
-    assign y_shift = y_sum >>> (DATA_WIDTH - GAIN_DATA_WIDTH);
-    assign y_gain = y_shift * gain_in;
-    assign y_scaled = y_gain >>> (LOG_UNITY_GAIN + DATA_SHIFT_OUT);
+    // Output scaling without gain multiplication
+    wire signed [DATA_WIDTH-1:0] y_scaled;
+    assign y_scaled = y_sum >>> (DATA_WIDTH - ADC_DATA_WIDTH);
     
-    // Saturate at ADC_DATA_WIDTH (14-bit) range before truncation
-    // Create intermediate shifted value that we can properly compare
-    wire signed [GAIN_DATA_WIDTH+GAIN_WIDTH-1:0] y_shifted_sat;
-    assign y_shifted_sat = y_scaled;
-
     // Final output saturation at ADC range
-    assign y_out = (y_shifted_sat > $signed((1 << (ADC_DATA_WIDTH-1)) - 1)) ? $signed((1 << (ADC_DATA_WIDTH-1)) - 1) :
-                   (y_shifted_sat < $signed(-(1 << (ADC_DATA_WIDTH-1)))) ? $signed(-(1 << (ADC_DATA_WIDTH-1))) :
+    assign y_out = (y_scaled > $signed((1 << (ADC_DATA_WIDTH-1)) - 1)) ? $signed((1 << (ADC_DATA_WIDTH-1)) - 1) :
+                   (y_scaled < $signed(-(1 << (ADC_DATA_WIDTH-1)))) ? $signed(-(1 << (ADC_DATA_WIDTH-1))) :
                    y_scaled[OUT_DATA_WIDTH-1:0];
 
 

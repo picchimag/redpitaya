@@ -1,17 +1,18 @@
 `timescale 1 ns / 1 ps
 // -------------------------------------------------------------
-// Minimal AXI4-Lite wrapper for iir2nd_direct
+// Minimal AXI4-Lite wrapper for stream8channel
 // - 32-bit word regs, offset = 4*index (ADDR_LSB=2)
 // - N_REGS = 2**LOG_NPAR
 // - Only edit: USER MAP and USER INSTANTIATION
 // -------------------------------------------------------------
-module pid_simple_axi_wrap #(
+module stream8channel_axi_wrap #(
     // AXI
     parameter integer C_S_AXI_ADDR_WIDTH = 8,
     parameter integer C_S_AXI_DATA_WIDTH = 32,
     // Register bank
-    parameter integer LOG_NPAR = 3  // 3 -> 8 regs
-    
+    parameter integer LOG_NPAR = 3,  // 3 -> 8 regs
+    // Stream parameters
+    parameter integer ADDR_BITS = 12  // BRAM address width (12 = 4096 samples)
 )(
     // AXI4-Lite
     input  wire                              s_axi_aclk,
@@ -37,19 +38,32 @@ module pid_simple_axi_wrap #(
     // ---------------------------------------------------------
     // USER PORTS BEGIN (edit to match your IP)
     // ---------------------------------------------------------
-    input  wire                              slow_clk,   // optional sample boundary/enable
-    input  wire  signed [31:0]               x_in,       // example data input
-    output wire  signed [15:0]               y_out       // example data output
+    // Data inputs (8 channels)
+    input  wire signed [15:0]                in0,
+    input  wire signed [15:0]                in1,
+    input  wire signed [15:0]                in2,
+    input  wire signed [15:0]                in3,
+    input  wire signed [15:0]                in4,
+    input  wire signed [15:0]                in5,
+    input  wire signed [15:0]                in6,
+    input  wire signed [15:0]                in7,
+
+    // BRAM Port-B interface (128-bit packed samples, 16 byte-enables)
+    output wire [ADDR_BITS-1:0]              bram_addr,
+    output wire [127:0]                      bram_din,
+    output wire                              bram_en,
+    output wire [15:0]                       bram_we
 );
 
 
     localparam integer ADDR_LSB = 2;                  // 32-bit words
     localparam integer N_REGS   = (1 << LOG_NPAR);    // number of regs
+    localparam integer N_READONLY = 1;                // Register 7 is read-only
     localparam [1:0]   RESP_OK  = 2'b00;
 
 
     // ----------------------------
-    // AXI write channel (tiny)
+    // AXI write channel
     // ----------------------------
     reg awready, wready, bvalid;
     reg [1:0] bresp;
@@ -92,9 +106,10 @@ module pid_simple_axi_wrap #(
     integer k;
     always @(posedge s_axi_aclk) begin
         if (!s_axi_aresetn) begin
-            for (k = 0; k < N_REGS; k = k + 1) regs[k] <= 32'd0;
+            // Only initialize writable registers to 0, leave readonly registers alone
+            for (k = 0; k < (N_REGS - N_READONLY); k = k + 1) regs[k] <= 32'd0;
         end else if (write_fire) begin
-            if (widx < N_REGS)
+            if (widx < (N_REGS - N_READONLY))  // Protect last N_READONLY registers from AXI writes
                 regs[widx] <= (regs[widx] & ~wmask32(s_axi_wstrb))
                             | (s_axi_wdata &  wmask32(s_axi_wstrb));
         end
@@ -133,49 +148,81 @@ module pid_simple_axi_wrap #(
     end
 
     // ---------------------------------------------------------
-    // USER MAP BEGIN  (name your registers here)
+    // USER MAP BEGIN (edit register assignments to match your IP)
+    // Register map:
+    //   +0x00  reg[0]  frame_len   (ADDR_BITS+1 bits)
+    //   +0x04  reg[1]  log_div     (5 bits, log2 decimation)
+    //   +0x08  reg[2]  arm         (bit 0)
+    //   +0x0C  reg[3]  ack         (bit 0)
+    //   +0x10  reg[4]  (reserved)
+    //   +0x14  reg[5]  (reserved)
+    //   +0x18  reg[6]  (reserved)
+    //   +0x1C  reg[7]  status      (read-only)
+    //              [0]        ready
+    //              [2:1]      (padding)
+    //              [10:3]     seq
+    //              [22:11]    wr_idx
+    //              [23]       sample_tick
     // ---------------------------------------------------------
-    // Example (direct-form):
-    wire signed [31:0] setpoint = regs[0]; // +0x18
-    wire signed [31:0] Kp   = regs[1];  // +0x00
-    wire signed [31:0] Ki   = regs[2];  // +0x04
-    wire signed [31:0] Kd   = regs[3];  // +0x08
-    wire signed [31:0] alpha_d   = regs[4];  // +0x08
-    wire        [31:0] control  = regs[6];  // +0x10
-    
+    wire [31:0] frame_len_reg = regs[0];
+    wire [31:0] log_div_reg   = regs[1];
+    wire [31:0] arm_reg       = regs[2];
+    wire [31:0] ack_reg       = regs[3];
 
-    // choose the filter clock/reset (simple: tie to AXI)
+    // Wires from stream8channel module
+    wire        ready_out;
+    wire [7:0]  seq_out;
+    wire [ADDR_BITS-1:0] wr_idx_out;
+    wire        sample_tick_out;
+
+    // Status register (read-only) - register 7
+    always @(posedge s_axi_aclk) begin
+        regs[7] <= {{(32-1-ADDR_BITS-8-2-1){1'b0}}, sample_tick_out, wr_idx_out, seq_out, 2'd0, ready_out};
+    end
+
+    // Choose the clock/reset (simple: tie to AXI)
     wire fclk = s_axi_aclk;
-    wire frst = ~s_axi_aresetn;  //AXI reset is active low, filter reset is active high
-
+    wire frstn = s_axi_aresetn;
 
     // ---------------------------------------------------------
-    // USER INSTANTIATION BEGIN (drop your module here)
+    // USER INSTANTIATION BEGIN
     // ---------------------------------------------------------
-    // All module parameter VALUES are set right here (nowhere else).
-    pid_simple #(
-        .IN_DATA_WIDTH  (32),
-        .OUT_DATA_WIDTH (16),
-        .DATA_WIDTH     (32),
-        .INTEGRATOR_WIDTH   (56), // wider to avoid overflow in integrator
-        .COEFF_WIDTH    (32),
-        .ALPHA_WIDTH    (18),
-        .LOG_A0_INTEGRATOR (20) // same scaling for integrator term
-    ) u_pid (
+    stream8channel #(
+        .SAMPLE_WIDTH  (16),
+        .N_CH          (8),
+        .ADDR_BITS     (ADDR_BITS),
+        .LOG_DIV_WIDTH (5)     // 5 bits = max log_div of 31, counter width = 32 bits
+    ) u_stream8channel (
         .clk          (fclk),
-        .rst          (frst),
-        .x_in         (x_in),                 // 32-bit
-        .slow_clk     (slow_clk),
-        .setpoint     (setpoint[31:0]),           // 32-bit
-        .Kp           (Kp[31:0]),        // module uses only COEFF_WIDTH LSBs
-        .Ki           (Ki[31:0]),
-        .Kd           (Kd[31:0]),
-        .alpha_d      (alpha_d[17:0]),  // LPF for D term
-        .filter_reset (control[0]),
-        .i_reset      (control[1]),          // integrator reset
-        .y_out_reg    (y_out)                // change to .y_out if needed
+        .rstn         (frstn),
+
+        // Control
+        .arm          (arm_reg[0]),
+        .frame_len    (frame_len_reg[ADDR_BITS:0]),
+        .log_div      (log_div_reg[4:0]),
+        .ack_raw      (ack_reg[0]),
+
+        // Data inputs
+        .in0          (in0),
+        .in1          (in1),
+        .in2          (in2),
+        .in3          (in3),
+        .in4          (in4),
+        .in5          (in5),
+        .in6          (in6),
+        .in7          (in7),
+
+        // BRAM Port-B
+        .bram_addr    (bram_addr),
+        .bram_din     (bram_din),
+        .bram_en      (bram_en),
+        .bram_we      (bram_we),
+
+        // Status
+        .ready        (ready_out),
+        .seq          (seq_out),
+        .wr_idx       (wr_idx_out),
+        .sample_tick  (sample_tick_out)
     );
 
 endmodule
-
-

@@ -1,4 +1,3 @@
-
 from python_rp.redpitaya_dev import redpitaya_dev
 import time
 import numpy as np
@@ -9,18 +8,18 @@ import sys
 
 # Connect to Red Pitaya
 # Connect to Red Pitaya
-dev = redpitaya_dev("171.64.56.120", "config/stream_cdma_4ch.json")
-#dev.base.bitfile = 'C:\\Users\\magrini\\Documents\\programming\\redpitaya\\projects\\stream_cdma_4ch\\stream_cdma_4ch.runs\\impl_1\\system_wrapper.bit'
+dev = redpitaya_dev("171.64.56.117", "config/z_control_v4_stream.json")
+dev.base.bitfile = 'C:\\Users\\magrini\\Documents\\programming\\redpitaya\\projects\\z_control_v4_stream\\z_control_v4_stream.runs\\impl_1\\system_wrapper.bit'
 #dev.base.bitfile = 'C:\\Users\\magrini\\Documents\\programming\\redpitaya\\projects\\project_1\\project_1.runs\\impl_1\\system_wrapper.bit'
 dev.base.load_bitfile()
 
 # Setup parameters
 frame_len = 1024
-sampling_frequency = 125e6  # 125 MHz
+sampling_frequency = 125e3  # 125 MHz
 
 # Configure CDMA using config file addresses
 print("Configuring CDMA...")
-config = dev.setup_cdma(frame_len=frame_len, sampling_frequency=sampling_frequency)
+config = dev.setup_cdma(frame_len=frame_len, sampling_frequency=sampling_frequency, module_name='stream8ch')
 
 actual_fs = config['actual_frequency']
 print(f"Frame length: {frame_len} samples")
@@ -33,8 +32,8 @@ app = QtWidgets.QApplication(sys.argv)
 
 # Create main window with layout
 main_widget = QtWidgets.QWidget()
-main_widget.setWindowTitle("4-Channel Time Trace + ASD - Press Q to quit")
-main_widget.resize(1600, 900)
+main_widget.setWindowTitle("6-Channel Time Trace + ASD - Press Q to quit")
+main_widget.resize(1600, 1200)
 layout = QtWidgets.QVBoxLayout()
 main_widget.setLayout(layout)
 
@@ -99,9 +98,9 @@ layout.addLayout(control_layout)
 graphics_widget = pg.GraphicsLayoutWidget()
 layout.addWidget(graphics_widget)
 
-# Create plots - 4 rows (one per channel), 2 columns (time trace, PSD)
-colors = ['c', 'g', 'r', 'y']  # cyan, green, red, yellow
-labels = ['Ch0', 'Ch1', 'Ch2', 'Ch3']
+# Create plots - 6 rows (one per channel), 2 columns (time trace, PSD)
+colors = ['c', 'g', 'r', 'y', 'm', 'w']  # cyan, green, red, yellow, magenta, white
+labels = ['Ch0', 'Ch1', 'Ch2', 'Ch3', 'Ch4', 'Ch5']
 # Time axis in seconds
 t_s = np.arange(frame_len) / actual_fs
 
@@ -114,7 +113,7 @@ for i, (label, color) in enumerate(zip(labels, colors)):
     # Time trace (left column)
     p_time = graphics_widget.addPlot(row=i, col=0)
     p_time.setLabel('left', label, units='V')
-    if i == 3:
+    if i == 5:
         p_time.setLabel('bottom', 'Time', units='s')
     p_time.showGrid(x=True, y=True, alpha=0.3)
     p_time.setYRange(-1.0, 1.0)
@@ -128,7 +127,7 @@ for i, (label, color) in enumerate(zip(labels, colors)):
     # ASD (right column)
     p_asd = graphics_widget.addPlot(row=i, col=1)
     p_asd.setLabel('left', 'ASD', units='V/√Hz')
-    if i == 3:
+    if i == 5:
         p_asd.setLabel('bottom', 'Frequency', units='Hz')
     p_asd.showGrid(x=True, y=True, alpha=0.3)
     p_asd.setLogMode(x=True, y=True)
@@ -146,7 +145,7 @@ running = True
 
 # ASD averaging buffers - store recent ASDs
 n_avg_prev = 10
-asd_buffers = [[] for _ in range(4)]  # One buffer per channel
+asd_buffers = [[] for _ in range(6)]  # One buffer per channel
 
 # Button callbacks
 def reset_averages():
@@ -162,7 +161,7 @@ def set_sampling_freq():
         new_fs = float(eval(sampling_input.text()))  # Allow scientific notation
         if new_fs > 0 and new_fs <= 125e6:
             print(f"Reconfiguring with sampling frequency: {new_fs/1e6:.3f} MHz")
-            new_config = dev.setup_cdma(frame_len=frame_len, sampling_frequency=new_fs)
+            new_config = dev.setup_cdma(frame_len=frame_len, sampling_frequency=new_fs, module_name='stream8ch')
             actual_fs = new_config['actual_frequency']
             print(f"Actual sampling rate: {actual_fs / 1e6:.3f} MHz")
             print(f"Acquisition time: {new_config['acquisition_time']*1000:.3f} ms")
@@ -191,7 +190,7 @@ def set_nsamples():
         if new_nsamples > 0 and new_nsamples <= 4096:
             print(f"Reconfiguring with {new_nsamples} samples")
             frame_len = new_nsamples
-            new_config = dev.setup_cdma(frame_len=frame_len, sampling_frequency=actual_fs)
+            new_config = dev.setup_cdma(frame_len=frame_len, sampling_frequency=actual_fs, module_name='stream8ch')
             print(f"Acquisition time: {new_config['acquisition_time']*1000:.3f} ms")
             print(f"Bandwidth: {actual_fs/frame_len:.2f} Hz")
             # Update displays
@@ -241,9 +240,9 @@ def update():
             buf.clear()
         n_avg_prev = n_avg
     
-    # Read frame
-    ch0, ch1, ch2, ch3 = dev.read_cdma_frame()
-    channels = [ch0, ch1, ch2, ch3]
+    # Read frame (8 channels from FPGA, but only use first 6)
+    ch0, ch1, ch2, ch3, ch4, ch5, ch6, ch7 = dev.read_cdma_frame()
+    channels = [ch0, ch1, ch2, ch3, ch4, ch5]  # Only plot first 6
     
     # Convert to volts (14-bit ADC: ±8192 counts = ±1V)
     channels_v = [ch / 8192.0 for ch in channels]

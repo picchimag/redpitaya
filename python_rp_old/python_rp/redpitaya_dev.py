@@ -58,8 +58,13 @@ class redpitaya_dev():
         self._num_channels = settings['num_channels']
         self._sample_width_bits = settings['sample_width_bits']
         
+        # Calculate correct byte_count based on number of channels
+        # Each sample = num_channels × (sample_width_bits/8) bytes
+        bytes_per_sample = self._num_channels * (self._sample_width_bits // 8)
+        byte_count = frame_len * bytes_per_sample
+        
         # Call base class method with extracted addresses
-        return self.base.setup_cdma(
+        result = self.base.setup_cdma(
             stream_base=stream_base,
             bram_addr=bram_addr,
             cdma_addr=cdma_addr,
@@ -67,6 +72,12 @@ class redpitaya_dev():
             frame_len=frame_len,
             sampling_frequency=sampling_frequency
         )
+        
+        # Override byte_count in both the result and the stored config
+        result['byte_count'] = byte_count
+        self.base._cdma_config['byte_count'] = byte_count
+        
+        return result
     
     def read_cdma_frame(self):
         """
@@ -74,20 +85,44 @@ class redpitaya_dev():
         Requires setup_cdma() to be called first.
         
         Returns:
-            tuple: Numpy arrays for each channel (ch0, ch1, ch2, ch3, ...)
+            tuple: Numpy arrays for each channel (ch0, ch1, ch2, ch3, ...) 
+                   Returns 4 or 8 channels depending on configuration
         """
-        # Get raw 64-bit data from base class
+        # Get raw data from base class (array of 64-bit words)
         raw_data = self.base.read_cdma_frame()
         
-        # Use pre-cached config values (set in setup_cdma)
-        # Parse channels from packed 64-bit words - optimized direct unpacking
-        # Format: {in3[63:48], in2[47:32], in1[31:16], in0[15:0]} for 4ch × 16-bit
-        ch0 = ((raw_data & 0xFFFF).astype(np.int16))
-        ch1 = (((raw_data >> 16) & 0xFFFF).astype(np.int16))
-        ch2 = (((raw_data >> 32) & 0xFFFF).astype(np.int16))
-        ch3 = (((raw_data >> 48) & 0xFFFF).astype(np.int16))
+        # Determine number of channels from config (stored during setup_cdma)
+        # Default to 4 channels if not specified
+        n_channels = getattr(self, '_num_channels', 4)
         
-        return ch0, ch1, ch2, ch3
+        # Parse channels based on packing format
+        # For 4 channels: 1 word per sample  {ch3, ch2, ch1, ch0}
+        # For 8 channels: 2 words per sample {ch3, ch2, ch1, ch0}, {ch7, ch6, ch5, ch4}
+        
+        if n_channels <= 4:
+            # Simple case: all channels fit in one 64-bit word
+            channels = []
+            for i in range(n_channels):
+                ch = ((raw_data >> (16 * i)) & 0xFFFF).astype(np.int16)
+                channels.append(ch)
+        else:
+            # 8 channels: need to handle two 64-bit words per sample
+            # raw_data pattern: [sample0_low, sample0_high, sample1_low, sample1_high, ...]
+            # Extract even/odd indexed words
+            words_low = raw_data[0::2]   # ch0-ch3 for all samples
+            words_high = raw_data[1::2]  # ch4-ch7 for all samples
+            
+            channels = []
+            # Extract channels 0-3 from low words
+            for i in range(4):
+                ch = ((words_low >> (16 * i)) & 0xFFFF).astype(np.int16)
+                channels.append(ch)
+            # Extract channels 4-7 from high words
+            for i in range(n_channels - 4):
+                ch = ((words_high >> (16 * i)) & 0xFFFF).astype(np.int16)
+                channels.append(ch)
+        
+        return tuple(channels)
 
     def list_modules(self):
         return list(self.modules.keys())

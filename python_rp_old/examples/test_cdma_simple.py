@@ -1,24 +1,26 @@
-from redpitaya_dev import redpitaya_dev
+from python_rp.redpitaya_dev import redpitaya_dev
 import time
 import numpy as np
 import matplotlib.pyplot as plt
 
 # Connect
-dev = redpitaya_dev("171.64.56.120", "config/stream_cdma_4ch.json")
+dev = redpitaya_dev("171.64.56.117", "config/stream_cdma_8ch.json")
 dev.base.bitfile = 'C:\\Users\\magrini\\Documents\\programming\\redpitaya\\projects\\stream_cdma_4ch\\stream_cdma_4ch.runs\\impl_1\\system_wrapper.bit'
+dev.base.bitfile = 'C:\\Users\\magrini\\Documents\\programming\\redpitaya\\projects\\z_control_v4_stream\\z_control_v4_stream.runs\\impl_1\\system_wrapper.bit'
+
 dev.base.load_bitfile()
 
 # Setup
 frame_len = 1024
 byte_count = frame_len * 8
-bram_addr = 0x41000000
+bram_addr = 0x42000000
 cdma_addr = 0x7E200000
 ddr_addr = 0x10000000
 
-dev.set_register('stream4ch', 'frame_len', frame_len)
-log_div = 0  # 0 = 125 MHz, 1 = 62.5 MHz, etc. (divider = 2^log_div)
-dev.set_register('stream4ch', 'log_div', log_div)
-dev.set_register('stream4ch', 'ack', 0)
+dev.set_register('stream8ch', 'frame_len', frame_len)
+log_div = 1  # 0 = 125 MHz, 1 = 62.5 MHz, etc. (divider = 2^log_div)
+dev.set_register('stream8ch', 'log_div', log_div)
+dev.set_register('stream8ch', 'ack', 0)
 
 # Calculate expected acquisition time
 acquisition_time = frame_len * (2**log_div) / 125e6  # seconds

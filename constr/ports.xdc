@@ -129,6 +129,37 @@ set_property PACKAGE_PIN P15 [get_ports {dac_pwm_o[2]}]
 set_property PACKAGE_PIN U13 [get_ports {dac_pwm_o[3]}]
 
 ### XADC
+### XADC  PORTS
+
+set_property PACKAGE_PIN K9  [get_ports Vp_Vn_v_p]
+set_property PACKAGE_PIN L10 [get_ports Vp_Vn_v_n]
+set_property IOSTANDARD LVCMOS33 [get_ports Vp_Vn_v_p]
+set_property IOSTANDARD LVCMOS33 [get_ports Vp_Vn_v_n]
+
+#Analog IN 1
+set_property PACKAGE_PIN C20 [get_ports Vaux0_v_p]
+set_property PACKAGE_PIN B20 [get_ports Vaux0_v_n]
+set_property IOSTANDARD LVCMOS33 [get_ports Vaux0_v_p]
+set_property IOSTANDARD LVCMOS33 [get_ports Vaux0_v_n]
+
+#Analog IN 2
+set_property PACKAGE_PIN E17 [get_ports Vaux1_v_p]
+set_property PACKAGE_PIN D18 [get_ports Vaux1_v_n]
+set_property IOSTANDARD LVCMOS33 [get_ports Vaux1_v_p]
+set_property IOSTANDARD LVCMOS33 [get_ports Vaux1_v_n]
+
+#Analog IN 0
+set_property PACKAGE_PIN B19 [get_ports Vaux8_v_p]
+set_property PACKAGE_PIN A20 [get_ports Vaux8_v_n]
+set_property IOSTANDARD LVCMOS33 [get_ports Vaux8_v_p]
+set_property IOSTANDARD LVCMOS33 [get_ports Vaux8_v_n]
+
+#Analog IN 3
+set_property PACKAGE_PIN E18 [get_ports Vaux9_v_p]
+set_property PACKAGE_PIN E19 [get_ports Vaux9_v_n]
+set_property IOSTANDARD LVCMOS33 [get_ports Vaux9_v_p]
+set_property IOSTANDARD LVCMOS33 [get_ports Vaux9_v_n]
+
 
 
 

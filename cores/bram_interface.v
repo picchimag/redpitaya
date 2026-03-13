@@ -3,10 +3,29 @@
 // XPM library directive
 (* DONT_TOUCH = "TRUE" *)
 
+// ============================================================
+// Channel-count guide
+// ============================================================
+// 4-channel (default): DATA_WIDTH = 64  (4 × 16-bit = 64 bits = 8 bytes/sample)
+//   AXI_ADDR_BITS = 15  (2^ADDR_BITS × 8  bytes, e.g. 2048 × 8  = 16384 B → 14 bits + 1 guard = 15)
+//   wea/web = 8 bits, ADDR_SHIFT = 3 ($clog2(8))
+//
+// 6-channel:           DATA_WIDTH = 96  (6 × 16-bit = 96 bits = 12 bytes/sample)
+//   AXI_ADDR_BITS = 16  (2^ADDR_BITS × 12 bytes, e.g. 2048 × 12 = 24576 B → 15 bits + 1 guard = 16)
+//   wea/web = 12 bits   (auto-derived from DATA_WIDTH/8 — no manual change needed)
+//   ADDR_SHIFT = 4      (auto-derived via $clog2(12) — no manual change needed)
+//
+// Summary: to go from 4ch → 6ch, change only:
+//   DATA_WIDTH  : 64  → 96
+//   AXI_ADDR_BITS: 15 → 16
+// Everything else (wea/web width, ADDR_SHIFT, MEM_BITS) is computed automatically.
+// ============================================================
 module bram_interface #(
-  parameter integer DATA_WIDTH = 64,       // Data width in bits
-  parameter integer ADDR_BITS = 12,    // depth per port = 2^ADDR_BITS words
-  parameter integer AXI_ADDR_BITS = 15    // AXI byte address width 2^ADDR_BITS * DATAWIDTH/8 (2048 words × 8 bytes = 16KB)
+  parameter integer DATA_WIDTH = 64,       // Data width in bits. 4ch=64, 6ch=96 (N_CH × SAMPLE_WIDTH)
+  parameter integer ADDR_BITS = 12,        // depth per port = 2^ADDR_BITS words
+  parameter integer AXI_ADDR_BITS = 15     // AXI byte address width = ceil(log2(2^ADDR_BITS × DATA_WIDTH/8)) + 1
+                                           // 4ch: 2048 × 8  bytes = 16384 → 15 bits
+                                           // 6ch: 2048 × 12 bytes = 24576 → 16 bits
 
 )(
   // ---------------- Port A (to AXI BRAM Controller) ----------------
@@ -27,12 +46,14 @@ module bram_interface #(
   output wire [DATA_WIDTH-1:0]    doutb
 );
 
-  // Calculate byte width and address shift
-  localparam integer BYTE_WIDTH = DATA_WIDTH / 8;
-  localparam integer ADDR_SHIFT = $clog2(BYTE_WIDTH);  // = 3 for 64-bit (8 bytes)
-  
-  // Convert AXI byte address to word address by shifting
-  wire [ADDR_BITS-1:0] addra = addra_axi[ADDR_SHIFT +: ADDR_BITS];  // Take bits [13:3]
+  // Calculate byte width and address shift (automatic — do not edit)
+  localparam integer BYTE_WIDTH = DATA_WIDTH / 8;  // 4ch → 8, 6ch → 12
+  localparam integer ADDR_SHIFT = $clog2(BYTE_WIDTH);  // 4ch → 3 ($clog2(8)),  6ch → 4 ($clog2(12))
+
+  // Convert AXI byte address to word address by right-shifting by ADDR_SHIFT
+  // 4ch: takes bits [ADDR_BITS+2 : 3]  (drop 3 LSBs = byte offset within 8-byte word)
+  // 6ch: takes bits [ADDR_BITS+3 : 4]  (drop 4 LSBs = byte offset within 16-byte-aligned word)
+  wire [ADDR_BITS-1:0] addra = addra_axi[ADDR_SHIFT +: ADDR_BITS];
 
   localparam integer MEM_BITS = (1 << ADDR_BITS) * DATA_WIDTH;
   

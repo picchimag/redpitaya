@@ -207,6 +207,13 @@ fi
 # Start CDMA transfer (write BTT)
 /opt/redpitaya/bin/monitor {cdma_addr + 0x28:#x} {byte_count}
 
+# Wait for CDMA to complete (poll status register bit 1 = idle)
+while true; do
+    CDMA_ST=$(/opt/redpitaya/bin/monitor {cdma_addr + 0x04:#x})
+    [ $((CDMA_ST & 0x2)) -ne 0 ] && break
+    sleep 0.0001
+done
+
 # Read DDR and output as base64
 dd if=/dev/mem bs={byte_count} count=1 iflag=skip_bytes skip={ddr_addr} 2>/dev/null | base64
 

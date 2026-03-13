@@ -1,6 +1,7 @@
 # python_rp
 
 Python control and data acquisition library for Red Pitaya FPGA projects.
+check this, [[iir2nd_direct_2ch]], [[z_control]], [[mca_simple]]
 
 ## Installation
 

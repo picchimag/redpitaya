@@ -1,0 +1,21 @@
+from python_rp.redpitaya_dev import redpitaya_dev
+import time
+import numpy as np
+import pyqtgraph as pg
+import sys
+
+# Connect to Red Pitaya
+# Connect to Red Pitaya
+dev = redpitaya_dev("171.64.56.117", "config/testconfig.json")
+dev.base.bitfile = 'C:\\Users\\magrini\\Documents\\programming\\redpitaya\\projects\\analog_aux\\analog_aux.runs\\impl_1\\system_wrapper.bit'
+dev.base.load_bitfile()
+
+print(dev.get_all_registers(module="aux_adc"))
+
+
+print(dev.get_all_registers(module="aux_adc"))
+
+print(dev.get_all_registers(module="aux_adc"))
+
+print(dev.base.read_word(0x41200000))
+print(dev.base.read_reg(0x41200000, 0, 31, 0, False))

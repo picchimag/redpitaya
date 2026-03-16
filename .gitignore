@@ -3,7 +3,7 @@
 /temp_python
 /.obsidian
 /.vscode
-./*.pyc
-./__pycache__
-./*.egg-info
-./dist
+*.pyc
+__pycache__/
+*.egg-info
+/dist

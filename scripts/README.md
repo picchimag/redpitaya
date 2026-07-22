@@ -52,6 +52,22 @@ and (ideally) build and diff the bitstream. `write_bd_tcl` occasionally mangles
 unusual IP configuration, so this check matters most for the streaming (CDMA /
 BRAM) and z_control_v* projects.
 
+## Transient batch-mode failures
+
+Running many headless Vivado sessions back-to-back can trip a flaky Tcl
+sub-interpreter, surfacing as one of:
+
+```
+ERROR: Could not create slave interpreter 'rodin:slave0'
+couldn't read file ".../design_assist/conn/axi4/utils.tcl": No error
+ERROR: [Ip 78-90] Error in initialization of Rule object 'xilinx.com:bd_rule:axi4:1.0'
+```
+
+These are not recipe or script defects (the named file exists and is
+readable) -- just re-run the same command and it will normally pass. Seen
+during both `make_project.tcl` and `build.tcl`; a single retry has always
+cleared it.
+
 ## Everyday workflow
 
 - **New design:** regenerate (or GUI Save As) a starting project, edit the block

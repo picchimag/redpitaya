@@ -47,11 +47,22 @@ if {[file exists $relax]} {
 # and mark it top.
 source $bd_recipe
 
-set bd [lindex [get_bd_designs] 0]
+# Take the design name from the recipe itself. Do NOT infer it from
+# get_bd_designs: IP such as smartconnect creates nested sub-designs, which that
+# command also returns (and may return first), silently yielding the wrong top.
+if {![info exists design_name]} {
+    puts "ERROR: recipe $bd_recipe did not define design_name"
+    exit 1
+}
+set bd $design_name
+current_bd_design [get_bd_designs $bd]
 validate_bd_design
 save_bd_design
 set bd_file [get_files ${bd}.bd]
-generate_target all $bd_file
+# No explicit generate_target here: designs containing smartconnect hold nested
+# sub-designs that Vivado refuses to generate directly (error 12-3563). Output
+# products are built by their parent when synthesis runs, so leave it to the
+# build step.
 make_wrapper -files $bd_file -top -import
 set_property top ${bd}_wrapper [current_fileset]
 update_compile_order -fileset sources_1

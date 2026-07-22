@@ -1,4 +1,21 @@
-/projects
+# Vivado projects: track only the per-project recipe (projects/<name>/bd.tcl)
+# and any per-project constraints. Everything else under projects/ is generated
+# by Vivado and rebuilt from the recipe via scripts/make_project.tcl.
+/projects/*/build/
+/projects/*/*.cache/
+/projects/*/*.gen/
+/projects/*/*.hw/
+/projects/*/*.ip_user_files/
+/projects/*/*.sim/
+/projects/*/*.srcs/
+/projects/*/*.runs/
+/projects/*/*.xpr
+/projects/*/*.jou
+/projects/*/*.log
+/projects/*/*.str
+/projects/*/.Xil/
+*.bit
+
 /verilog_untested
 /temp_python
 /.obsidian

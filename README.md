@@ -1,48 +1,54 @@
-# Red Pitaya Custom Filter Project
+# Red Pitaya Custom DSP FPGA
 
-## Overview
+Custom digital-signal-processing designs for the Red Pitaya (Zynq **xc7z010clg400-1**,
+Vivado **2024.1**), based on Pavel Demin's template flow. Filters (IIR/FIR),
+PID, integrator, multichannel-analyzer (peak finder + histogram) and streaming
+front-ends, each built as a Vivado block design around shared RTL.
 
-This repository is a streamlined Red Pitaya filter design environment, based on Pavel Demin's "template" project. It enables rapid prototyping and deployment of custom digital filters (IIR, FIR, integrator, etc.) on the Red Pitaya Zynq 7010 platform.
+Python control, bitfiles and register maps live in the companion repo
+**redpitaya_control**.
 
-### Key Features
-
-- **Vivado Block Design**: Start from the `template` XPR project, save as your new project, and modify as needed.
-- **Custom RTL**: All new Verilog modules (filters, integrators, etc.) are in `rtl/`. ADC/DAC modules are copied from Pavel's repo into `cores/` and added as source files, not prebuilt IP.
-- **Constraints**: Custom timing and pin constraints are in `constr/`.
-- **Python Interface**: Scripts in `python/` allow you to load bitstreams, set filter coefficients, and interact with the Red Pitaya from your PC.
-
-### Directory Structure
+## Structure
 
 ```
-cores/      # ADC/DAC/top-level modules (Verilog)
-rtl/        # Custom filter/integrator modules (Verilog)
-verilog/    # Reference and experimental Verilog modules
-constr/     # Custom XDC constraints
-projects/   # Vivado project folders (copy template, rename, edit)
-python/     # Scripts for bitstream loading, coefficient control, etc.
-temp_python/# Experimental Python scripts/notebooks
-temp_verilog# Experimental Verilog modules
+cores/     Foundational Verilog: ADC, DAC, XADC, BRAM interface (mostly Pavel Demin's)
+rtl/       Custom modules + their AXI wrappers: filters, PID, integrator,
+           MCA (peak_detector, peak_height_binning), streaming (stream4/8channel)
+constr/    XDC constraints: pin map (ports), clocks, timing relaxation
+projects/  One folder per design. Only projects/<name>/bd.tcl is tracked -- the
+           block-design recipe. All Vivado-generated files are gitignored.
+scripts/   Headless Tcl to export / regenerate / build projects (see scripts/README.md)
 ```
+
+## Source of truth
+
+A design is fully described by four tracked things: `rtl/` + `cores/` + `constr/`
++ its `projects/<name>/bd.tcl`. Everything else under `projects/<name>/` (the
+`.xpr`, `.gen`, `.runs`, caches, bitstream) is generated and rebuilt on demand,
+so it is gitignored. This means any design can be reconstructed from git on any
+machine — no Vivado project directory needs to be committed or backed up.
+
+The block design (`system.bd`) is the single file behind everything you see in
+the Vivado GUI: block wiring lives in its `nets` sections, and the Address
+Editor assignments live in its `address_spaces`/`segments`. `bd.tcl` is a text
+recipe that regenerates it.
 
 ## Workflow
 
-1. **Vivado Design**
-   - Open the XPR project in `projects/template` or the closest match.
-   - Save as your new project name (e.g., `iir2nd_direct_gpio`).
-   - Add/modify RTL modules from `rtl/` and `cores/`.
-   - Add constraints from `constr/`.
-   - Build the bitstream.
+See [scripts/README.md](scripts/README.md) for the full commands. In short:
 
-2. **Python Control**
-   - Use scripts in `python/` to load the bitstream, set coefficients, and interact with the filter hardware.
+1. **Capture** a project into git once: `export_bd.tcl` writes `projects/<name>/bd.tcl`.
+2. **Regenerate** the Vivado project anytime: `make_project.tcl` rebuilds it from the recipe.
+3. **Edit** in the GUI as usual; when done, re-run `write_bd_tcl` and commit the diff.
+4. **Build**: `build.tcl` produces the bitstream; copy it into `redpitaya_control/bitfiles/`.
 
-## Getting Started
+## Notes
 
-1. Clone this repository
-2. Open Vivado and load an existing project from `projects/` as a starting point
-3. Save the project with your new name
-4. Modify the block design and add your custom RTL from `rtl/`
-5. Build and deploy to Red Pitaya
-6. Use Python scripts to control and test your design
+- `bd/` at the repo root is a legacy hand-committed copy of one design's block
+  design; it is superseded by the per-project `bd.tcl` recipes and will be removed
+  once that project is captured.
+- The register addresses in each block design's Address Editor are the source
+  of the `base` addresses in the `redpitaya_control` JSON configs — keep the two
+  in sync when you move a register.
 
-See `TASKS.md` for current development tasks and Python interface to-do items.
+See `TASKS.md` and `LESSONSLEARNED.md` for ongoing work and gotchas.

@@ -1,17 +1,41 @@
 `timescale 1 ns / 1 ps
 // -------------------------------------------------------------
-// Minimal AXI4-Lite wrapper for peak_detector
+// Minimal AXI4-Lite wrapper for event_logger
 // - 32-bit word regs, offset = 4*index (ADDR_LSB=2)
 // - N_REGS = 2**LOG_NPAR
 // - Only edit: USER MAP and USER INSTANTIATION
+//
+// Register map (offset = 4 * index):
+//   0x00 control  : [0]arm [1]clear_ts [2]reset [3]snap [4]ack
+//   0x04 presc    : [15:0] clk cycles per us tick (125 @125 MHz)
+//   0x08 frame_len: [ADDR_BITS-2:0] records per buffer before swap
+//   0x0C flush_ticks: [31:0] us before forced swap of a partial buffer (0=never)
+//   0x10 band_low : [15:0] signed  (log only peaks in [band_low, band_high])
+//   0x14 band_high: [15:0] signed
+//   0x18 chb_thr  : [15:0] signed  (channel-B digital threshold)
+//   0x1C spare
+//   ---- read-only ----
+//   0x20 status   : [0]ready [1]ready_buf [2]dropped_nonzero
+//   0x24 ready_count
+//   0x28 dropped
+//   0x2C ts_snap_lo  : timestamp[31:0]
+//   0x30 ts_snap_hi  : timestamp[47:32]
+//   0x34 events_lo   : total_events[31:0]
+//   0x38 events_hi   : total_events[47:32]
+//   0x3C spare
 // -------------------------------------------------------------
-module peak_detector_axi_wrap #(
+module event_logger_axi_wrap #(
     // AXI
     parameter integer C_S_AXI_ADDR_WIDTH = 8,
     parameter integer C_S_AXI_DATA_WIDTH = 32,
     // Register bank
-    parameter integer LOG_NPAR = 4  // 4 -> 16 regs (expanded for more readonly registers)
-    
+    parameter integer LOG_NPAR   = 4,   // 4 -> 16 regs
+    // event_logger geometry
+    parameter integer TS_WIDTH   = 48,
+    parameter integer E_WIDTH    = 15,
+    parameter integer REC_WIDTH  = 64,
+    parameter integer ADDR_BITS  = 13,  // 2^ADDR_BITS words total (2 buffers)
+    parameter integer PEAK_WIDTH = 16
 )(
     // AXI4-Lite
     input  wire                              s_axi_aclk,
@@ -37,24 +61,24 @@ module peak_detector_axi_wrap #(
     // ---------------------------------------------------------
     // USER PORTS BEGIN (edit to match your IP)
     // ---------------------------------------------------------
-    input  wire                              slow_clk,      // Sample clock enable
-    input  wire  signed [15:0]               x_in,          // ADC sample input
-    output wire                              peak_detected_out, // Peak detection pulse
-    output wire  signed [15:0]               peak_value_out,  // Selected output (integration or max)
-    output wire  signed [15:0]               peak_integral_out, // Integration accumulator result
-    output wire  signed [15:0]               peak_max_out,    // Maximum value detected
-    output wire         [15:0]               max_delay        // Delay at which maximum was detected
+    input  wire                              peak_detected,   // 1-cycle pulse from peak_detector
+    input  wire signed [PEAK_WIDTH-1:0]      peak_value_in,   // peak amplitude
+    input  wire signed [PEAK_WIDTH-1:0]      chb_raw,         // channel-B ADC sample (tdata[31:16])
+
+    // BRAM Port-B (Port-A -> AXI BRAM Ctrl / CDMA source)
+    output wire [ADDR_BITS-1:0]              bram_addr,
+    output wire [REC_WIDTH-1:0]              bram_din,
+    output wire                              bram_en,
+    output wire [(REC_WIDTH/8)-1:0]          bram_we
 );
 
-
     localparam integer ADDR_LSB = 2;                  // 32-bit words
-    localparam integer N_REGS   = (1 << LOG_NPAR);    // number of regs
-    localparam integer N_READONLY = 6;                // Registers 10-15 are read-only
+    localparam integer N_REGS   = (1 << LOG_NPAR);    // 16
+    localparam integer N_READONLY = 8;                // regs 8..15 are read-only
     localparam [1:0]   RESP_OK  = 2'b00;
 
-
     // ----------------------------
-    // AXI write channel
+    // AXI write channel (tiny)
     // ----------------------------
     reg awready, wready, bvalid;
     reg [1:0] bresp;
@@ -102,12 +126,13 @@ module peak_detector_axi_wrap #(
             if (write_fire && widx < (N_REGS - N_READONLY))
                 regs[widx] <= (regs[widx] & ~wmask32(s_axi_wstrb))
                             | (s_axi_wdata &  wmask32(s_axi_wstrb));
-            regs[10] <= {30'd0, state_out};
-            regs[11] <= {16'd0, max_delay};
-            regs[12] <= {peak_value_out, x_in};
-            regs[13] <= {16'd0, peak_integral_out};
-            regs[14] <= {16'd0, peak_max_out};
-            regs[15] <= 32'd0;
+            regs[8]  <= {29'd0, (dropped != 32'd0), ready_buf, ready};
+            regs[9]  <= {{(32-ADDR_BITS){1'b0}}, ready_count};
+            regs[10] <= dropped;
+            regs[11] <= ts_snap[31:0];
+            regs[12] <= {{(32-(TS_WIDTH-32)){1'b0}}, ts_snap[TS_WIDTH-1:32]};
+            regs[13] <= total_events[31:0];
+            regs[14] <= {{(32-(TS_WIDTH-32)){1'b0}}, total_events[TS_WIDTH-1:32]};
         end
     end
 
@@ -144,54 +169,70 @@ module peak_detector_axi_wrap #(
     end
 
     // ---------------------------------------------------------
-    // USER MAP BEGIN (edit register assignments to match your IP)
+    // USER MAP BEGIN  (name your registers here)
     // ---------------------------------------------------------
-    //Control registers
-    
-    wire signed [31:0] trig_level_reg    = regs[0];   // +0x00
-    wire signed [31:0] fall_level_reg    = regs[1];   // +0x04
-    wire signed [31:0] base_return_reg   = regs[2];   // +0x08
-    wire        [31:0] dead_time_reg     = regs[3];   // +0x0C
-    wire        [31:0] control_reg       = regs[4];   // +0x10  (bit 0=filter_reset, bit 1=invert_input)
-    wire        [31:0] n_integration_reg = regs[5];   // +0x14
-    // regs[6] is read-only status register
-    
-    // Wire from peak detector module
-    wire        [1:0]  state_out;                       // FSM state
-    
+    wire        [31:0] control     = regs[0];        // +0x00
+    wire               arm         = control[0];
+    wire               clear_ts    = control[1];
+    wire               ctrl_reset  = control[2];
+    wire               snap        = control[3];
+    wire               ack         = control[4];
+    wire        [15:0] presc       = regs[1][15:0];  // +0x04
+    wire [ADDR_BITS-1:0] frame_len = regs[2][ADDR_BITS-1:0]; // +0x08
+    wire        [31:0] flush_ticks = regs[3];        // +0x0C
+    wire signed [15:0] band_low    = regs[4][15:0];  // +0x10
+    wire signed [15:0] band_high   = regs[5][15:0];  // +0x14
+    wire signed [15:0] chb_thr     = regs[6][15:0];  // +0x18
 
-    // choose the filter clock/reset (simple: tie to AXI)
+    // Read-only outputs from the module
+    wire               ready;
+    wire               ready_buf;
+    wire [ADDR_BITS-1:0] ready_count;
+    wire        [31:0] dropped;
+    wire [TS_WIDTH-1:0] ts_snap;
+    wire [TS_WIDTH-1:0] total_events;
+
+
+    // clock/reset (simple: tie to AXI, plus soft reset bit)
     wire fclk = s_axi_aclk;
-    wire frst = ~s_axi_aresetn;  //AXI reset is active low, filter reset is active high
+    wire frst = ~s_axi_aresetn | ctrl_reset;
 
     // ---------------------------------------------------------
     // USER INSTANTIATION BEGIN (drop your module here)
     // ---------------------------------------------------------
-    // All module parameter VALUES are set right here (nowhere else).
-    peak_detector #(
-        .DATA_WIDTH        (16),
-        .COUNTER_WIDTH     (16),
-        .INTEGRATION_WIDTH (32)                          // Increased to 32 bits
-    ) u_peak_detector (
-        .clk               (fclk),
-        .rst               (frst),
-        .x_in              (x_in),                       // 16-bit ADC input
-        .slow_clk          (slow_clk),
-        .trig_level        (trig_level_reg[15:0]),       // Use lower 16 bits
-        .fall_level        (fall_level_reg[15:0]),
-        .base_return       (base_return_reg[15:0]),
-        .dead_time_setting (dead_time_reg[15:0]),
-        .n_integration     (n_integration_reg[15:0]),    // Use lower 16 bits
-        .log_attenuation   (control_reg[7:4]),           // Control bits [7:4]: log_attenuation
-        .integration_mode  (control_reg[2]),             // Control bit 2: integration mode
-        .invert_input      (control_reg[1]),             // Control bit 1: polarity inversion
-        .filter_reset      (control_reg[0]),             // Control bit 0: filter reset
-        .peak_detected_out (peak_detected_out),              // Output wire
-        .peak_value_out    (peak_value_out),             // Selected output wire
-        .peak_integral_out (peak_integral_out),          // Integration output wire
-        .peak_max_out      (peak_max_out),               // Max value output wire
-        .max_delay         (max_delay),                  // Max delay output wire
-        .state_out         (state_out)                   // Connect to status register
+    event_logger #(
+        .TS_WIDTH    (TS_WIDTH),
+        .E_WIDTH     (E_WIDTH),
+        .REC_WIDTH   (REC_WIDTH),
+        .ADDR_BITS   (ADDR_BITS),
+        .PRESC_WIDTH (16),
+        .PEAK_WIDTH  (PEAK_WIDTH)
+    ) u_event_logger (
+        .clk           (fclk),
+        .rst           (frst),
+        .arm           (arm),
+        .clear_ts      (clear_ts),
+        .presc         (presc),
+        .frame_len     (frame_len),
+        .flush_ticks   (flush_ticks),
+        .band_low      (band_low),
+        .band_high     (band_high),
+        .chb_threshold (chb_thr),
+        .snap          (snap),
+        .ack           (ack),
+        .peak_detected (peak_detected),
+        .peak_value_in (peak_value_in),
+        .chb_raw       (chb_raw),
+        .bram_addr     (bram_addr),
+        .bram_din      (bram_din),
+        .bram_en       (bram_en),
+        .bram_we       (bram_we),
+        .ready         (ready),
+        .ready_buf     (ready_buf),
+        .ready_count   (ready_count),
+        .dropped       (dropped),
+        .ts_snap       (ts_snap),
+        .total_events  (total_events)
     );
 
 endmodule

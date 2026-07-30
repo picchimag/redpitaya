@@ -131,7 +131,6 @@ module peak_height_binning #(
     wire [LOG_NBINS-1:0] bin_index;                          // LOG_NBINS bits for addressing
     wire band_match;
     
-    reg [BIN_COUNT_WIDTH-1:0] bin_counters [0:NUM_BINS-1]; // Bin counter array (for easier manipulation)
     reg [15:0] pulse_timer;
     reg band_detected_active;
     

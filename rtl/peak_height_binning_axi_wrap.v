@@ -93,12 +93,13 @@ module peak_height_binning_axi_wrap #(
     integer k;
     always @(posedge s_axi_aclk) begin
         if (!s_axi_aresetn) begin
-            // Only initialize writable registers to 0, leave readonly registers alone
-            for (k = 0; k < (N_REGS - N_READONLY); k = k + 1) regs[k] <= 32'd0;
-        end else if (write_fire) begin
-            if (widx < (N_REGS - N_READONLY))  // Protect last N_READONLY registers from AXI writes
+            for (k = 0; k < N_REGS; k = k + 1) regs[k] <= 32'd0;
+        end else begin
+            if (write_fire && widx < (N_REGS - N_READONLY))
                 regs[widx] <= (regs[widx] & ~wmask32(s_axi_wstrb))
                             | (s_axi_wdata &  wmask32(s_axi_wstrb));
+            regs[14] <= read_data;
+            regs[15] <= {28'd0, clearing_active, overflow_flag, data_ready};
         end
     end
 
@@ -153,12 +154,6 @@ module peak_height_binning_axi_wrap #(
     wire               data_ready;                 // Data ready flag (internal)
     wire               clearing_active;            // Clearing in progress flag
     
-    always @(posedge s_axi_aclk) begin
-        regs[14] <= read_data;               // Register 14: histogram data (same clock domain)
-        regs[15] <= {28'd0, clearing_active, overflow_flag, data_ready}; // Register 15: status
-        //           [31:3]  [2]             [1]           [0]
-        //           unused  clearing_active overflow      data_ready
-    end
     
     // choose the filter clock/reset (simple: tie to AXI)
     wire fclk = s_axi_aclk;

@@ -210,21 +210,24 @@ module peak_detector #(
 
 
     // Output pipeline stage - runs on full clk rate for timing closure
+    reg peak_detected_pipe_d;
     always @(posedge clk) begin
         if (rst || filter_reset) begin
-            // Reset all outputs
             peak_detected_out <= 0;
+            peak_detected_pipe_d <= 0;
             peak_value_out <= 0;
             peak_integral_out <= 0;
             peak_max_out <= 0;
         end else begin
-            // Pipeline the outputs - this breaks the slow_clk timing dependency
-            peak_detected_out <= peak_detected_pipe;
+            peak_detected_pipe_d <= peak_detected_pipe;
+            // Rising-edge detect: peak_detected_pipe spans 2 clk cycles (one slow_clk period),
+            // so raw pipelining would produce a 2-cycle pulse. Edge detect gives exactly 1 cycle.
+            peak_detected_out <= peak_detected_pipe & ~peak_detected_pipe_d;
             peak_value_out <= peak_value_pipe;
             peak_integral_out <= peak_integral_pipe;
             peak_max_out <= peak_max_pipe;
         end
-    end 
+    end
 
     
 endmodule

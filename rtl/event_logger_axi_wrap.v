@@ -13,15 +13,16 @@
 //   0x10 band_low : [15:0] signed  (log only peaks in [band_low, band_high])
 //   0x14 band_high: [15:0] signed
 //   0x18 chb_thr  : [15:0] signed  (channel-B digital threshold)
-//   0x1C spare
+//   0x1C veto_ms  : [15:0] chB-transition veto window, ms (0 = off)
+//                  events inside the window are logged with record[63]=1
 //   ---- read-only ----
 //   0x20 status   : [0]ready [1]ready_buf [2]dropped_nonzero
 //   0x24 ready_count
 //   0x28 dropped
 //   0x2C ts_snap_lo  : timestamp[31:0]
-//   0x30 ts_snap_hi  : timestamp[47:32]
+//   0x30 ts_snap_hi  : timestamp[46:32]  (15 bits)
 //   0x34 events_lo   : total_events[31:0]
-//   0x38 events_hi   : total_events[47:32]
+//   0x38 events_hi   : total_events[46:32]
 //   0x3C spare
 // -------------------------------------------------------------
 module event_logger_axi_wrap #(
@@ -31,11 +32,12 @@ module event_logger_axi_wrap #(
     // Register bank
     parameter integer LOG_NPAR   = 4,   // 4 -> 16 regs
     // event_logger geometry
-    parameter integer TS_WIDTH   = 48,
+    parameter integer TS_WIDTH   = 47,
     parameter integer E_WIDTH    = 15,
     parameter integer REC_WIDTH  = 64,
     parameter integer ADDR_BITS  = 13,  // 2^ADDR_BITS words total (2 buffers)
-    parameter integer PEAK_WIDTH = 16
+    parameter integer PEAK_WIDTH = 16,
+    parameter integer VETO_WIDTH = 16   // veto_ms width (16 -> up to 65.5 s)
 )(
     // AXI4-Lite
     input  wire                              s_axi_aclk,
@@ -183,6 +185,7 @@ module event_logger_axi_wrap #(
     wire signed [15:0] band_low    = regs[4][15:0];  // +0x10
     wire signed [15:0] band_high   = regs[5][15:0];  // +0x14
     wire signed [15:0] chb_thr     = regs[6][15:0];  // +0x18
+    wire [VETO_WIDTH-1:0] veto_ms  = regs[7][VETO_WIDTH-1:0]; // +0x1C
 
     // Read-only outputs from the module
     wire               ready;
@@ -206,7 +209,8 @@ module event_logger_axi_wrap #(
         .REC_WIDTH   (REC_WIDTH),
         .ADDR_BITS   (ADDR_BITS),
         .PRESC_WIDTH (16),
-        .PEAK_WIDTH  (PEAK_WIDTH)
+        .PEAK_WIDTH  (PEAK_WIDTH),
+        .VETO_WIDTH  (VETO_WIDTH)
     ) u_event_logger (
         .clk           (fclk),
         .rst           (frst),
@@ -218,6 +222,7 @@ module event_logger_axi_wrap #(
         .band_low      (band_low),
         .band_high     (band_high),
         .chb_threshold (chb_thr),
+        .veto_ms       (veto_ms),
         .snap          (snap),
         .ack           (ack),
         .peak_detected (peak_detected),

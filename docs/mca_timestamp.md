@@ -24,7 +24,12 @@ ADC ─┬─ chA ─► IIR1 ─► FIR9 ─► peak_detector ─┬─► peak
 | `[63]`    | veto | 1 if the event fell inside a chB-transition veto window |
 
 **Layout changed** — the timestamp is 47 bits, not 48; bit 63 became the veto tag
-and chb moved 63→62. Files from an older 48-bit build will not parse correctly.
+and chb moved 63→62. The pre-veto build packed the record as
+`ts[47:0] | energy[62:48] | chb[63]` with no veto bit at all; those files do not
+parse and are not supported. The failure is silent — `veto` comes back holding
+chb and energy reads as `2×(energy & 0x3FFF)`, always even with the top bit lost.
+`veto_ms` writes to such a bitstream land in an unused spare register and are
+ignored without error, so the run looks healthy until you unpack it.
 
 Time base = one free-running counter incremented every `presc` clocks
 (`presc=125` ⇒ 1 µs at 125 MHz). **Never reset per day** — software slices by
@@ -116,6 +121,21 @@ vivado -mode batch -source scripts/build.tcl -tclargs mca_timestamp_1ch
 cp projects/mca_timestamp_1ch/mca_timestamp_1ch.bit ../redpitaya_control/bitfiles/
 ```
 
+> **After editing `rtl/event_logger.v` (or any RTL behind a module-reference
+> block), run `make_project.tcl` first — `build.tcl` alone is not enough.**
+> `build.tcl` only does `reset_run impl_1`. That re-runs the top synth, but the
+> module's own out-of-context run stays "current", so the top synth black-boxes
+> the stub and impl links the *stale* `.dcp`. The result is a bitstream with old
+> module logic and no warning. `make_project.tcl` wipes `build/`, forcing the IP
+> to be regenerated. Verify with:
+>
+> ```bash
+> ls -ld projects/mca_timestamp_1ch/build/mca_timestamp_1ch.runs/{synth_1,system_event_logger_0_0_synth_1}
+> ```
+>
+> If the `system_event_logger_0_0_synth_1` directory is older than the RTL file,
+> the bitstream does not contain your changes.
+
 Block-design wiring: histogram/logger each need a `bram_interface` + `axi_bram_ctrl`
 (Port-B ↔ module, incl. `doutb → bram_dout` for the histogram RMW); one shared
 `axi_cdma` reaches both BRAM controllers + a PS HP port via smartconnect. Fan the
@@ -173,4 +193,7 @@ a sync record — no external-clock hardware mod needed.
   histogram read mid-logger-drain). A second CDMA removes the contention.
 - **RMW** relies on MCA dead time (events never < 3 clk apart).
 - `write_bd_tcl` can mangle CDMA/BRAM IP config — do the round-trip diff.
+- **Stale OOC IP** — an energy scale that is off by 2× and always even, with chB
+  showing up in the `veto` column, means the bitstream predates the veto change.
+  Rebuild it (see Build); the old records cannot be recovered as veto-tagged.
 ```
